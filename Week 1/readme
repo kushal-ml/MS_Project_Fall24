@@ -1,0 +1,87 @@
+PROPOSAL - 
+
+We are going through different ongoing research and trying to find a topic on which we can start our research.
+We are writing these topics to discuss with Dr. Sabah for his approval and more guidance on which topic can be decided for our research.
+
+Mental Stress Detection in University Students using Machine Learning Algorithms
+Women's Safety and Empowerment Using AI Tools
+Understanding and Supporting Grassroots Efforts to Mitigate AI Failures - Cancer Diagnosis: AI models trained to detect cancer through imaging have sometimes misclassified or missed early-stage cancer, leading to diagnostic errors.
+-Mental Health Chatbots: AI chatbots used for mental health support can struggle with understanding complex human emotions, leading to inadequate or impersonal responses.
+-Predictive Analytics in Hospitals: AI systems predicting patient deterioration have occasionally given inaccurate forecasts, causing delays in critical interventions.
+The Influence of Error on Perceptions of Machine Learning vs. Clinician-Based Risk Assessments
+Audio-Driven Facial Landmarks Generation - create expressions *
+Hybrid Models Combining Transformers and Graph Neural Networks (GNNs): Investigating how GNNs can enhance Transformers for segmenting complex structures like blood vessels or nerves.
+Multi-Modal Medical Image Segmentation Using Transformers: Studying the integration of multiple imaging modalities (e.g., MRI, CT) using Transformers for more accurate segmentation.
+Focusing on reducing the computational cost of Transformers to enable faster and more efficient segmentation in clinical settings.
+Supprethaa Shankar:
+
+AI-Powered Task Manager:
+• Core Functionality:
+• Task input (description, deadline, priority)
+• Task scheduling based on time, priority, and dependencies
+• Task tracking and progress updates
+• Notifications and reminders
+• AI Integration:
+• Natural language processing (NLP) for task understanding and input
+• Machine learning algorithms for:
+o Predicting task durations
+o Suggesting optimal time slots
+o Learning user preferences and adapting schedules accordingly
+• Additional Features (for innovation):
+• Contextual awareness (e.g., location, weather)
+• Integration with other productivity tools (e.g., calendar, email)
+• Collaboration features (e.g., shared tasks, team scheduling)
+• Gamification elements (e.g., points, badges)
+
+Justification: Leveraging AI for Innovation:
+• Personalized Scheduling: AI can analyze individual work patterns, preferences, and deadlines to create personalized schedules that optimize productivity and minimize stress.
+• Predictive Analytics: By analyzing historical data and patterns, AI can predict task durations, identify potential bottlenecks, and suggest proactive measures to avoid delays.
+• Natural Language Processing: NLP can enable users to interact with the task manager in a more natural and intuitive way, reducing the learning curve and improving user experience.
+
+Multilingual AI Sign Language Interpreter Develop an AI that can interpret and translate between multiple sign languages and spoken languages in real-time using computer vision. This could greatly improve communication for deaf and hard-of-hearing individuals across different cultures and languages.
+
+AI-Powered Cognitive Assistant for Individuals with Memory Impairments Design an AI that:
+
+• Uses computer vision to recognize people, places, and objects
+• Employs LLMs to generate reminders, instructions, and memory prompts
+• Creates daily summaries and helps with task planning
+• Answers questions about past events or daily routines
+
+Tharun Sekar:
+
+Adversarial Machine Learning:
+Research ways to make AI models more robust and secure against adversarial attacks, where an adversary deliberately crafts inputs to fool the model.
+
+Develop novel attack strategies, as well as defenses like adversarial training, gradient masking, or certified robustness, to improve the reliability and trustworthiness of AI systems.
+
+Potential domains include security-critical applications like autonomous vehicles, facial recognition, or malware detection.
+
+Multi-Agent Reinforcement Learning:
+Multi-Agent Reinforcement Learning (MARL) is a field of study that examines how multiple autonomous agents can learn to interact with each other and their environment through trial-and-error. This is in contrast to traditional single-agent reinforcement learning, where a single agent seeks to optimize its own behavior.
+
+In a multi-agent system, the agents may need to cooperate to achieve a common goal, or they may compete against each other for scarce resources or rewards. The key challenge is that the agents' actions can have both direct and indirect effects on the other agents, leading to complex and often unpredictable emergent behaviors.
+
+Cooperative Multi-Agent Reinforcement Learning (CMARL)
+
+One approach to MARL is Cooperative Multi-Agent Reinforcement Learning (CMARL), where the agents work together to maximize a shared reward. This requires the agents to learn effective communication strategies, task coordination, and joint decision-making.
+
+Some CMARL algorithms include:
+
+Centralized Training with Decentralized Execution (CTDE): The agents are trained in a centralized manner but can act independently during deployment.
+
+Multi-Agent Deep Deterministic Policy Gradient (MADDPG): An extension of the DDPG algorithm for multi-agent scenarios, where each agent learns a policy that maximizes the global reward.
+
+Counterfactual Multi-Agent Policy Gradients (COMA): Agents learn by estimating the counterfactual advantage of their actions, i.e., how the team's reward would change if they had taken a different action.
+
+Explainable AI:
+Understanding Explainable AI
+Explainable AI (XAI) refers to the development of machine learning models that can provide explanations for their decisions and predictions. This is in contrast to the "black box" nature of many modern AI systems, where the internal decision-making process is opaque and difficult to interpret.
+
+The need for Explainable AI arises from various factors:
+
+Trust and Accountability: Users, stakeholders, and regulatory bodies often require AI systems to be transparent and accountable, especially in high-stakes domains like healthcare, finance, or criminal justice.
+
+Debugging and Improvement: Explainable AI models can help developers and researchers understand the model's weaknesses and biases, allowing them to iteratively improve the system.
+
+Ethical Considerations: Explainable AI is crucial for ensuring that AI systems are fair, unbiased, and aligned with human values and preferences.
+
