@@ -1,0 +1,10 @@
+Github - https://github.com/kushal-ml/MS-Project-Week5-6-Critical_Investigation
+
+Investigation 1 -
+BLEU Score (BERT Large): 0.0841919825087901,
+BLEU Score (RoBERTa): 0.011614127870993073,
+BLEU Score (XLM-R): 0.006705457242632046,
+BLEU Score (BioBERT): 0.05529896622394584,
+BLEU Score (SPARQL-based models): 0.0012031990418496278,
+BLEU Score (CountVectorizer + Logistic Regression): 100.00000000000004, (THIS IS SOMETHING ODD WHICH NEEDS TO BE DIGGED DEEP)
+BLEU Score (GPT-2): 0.03535077658592161.
