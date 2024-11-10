@@ -1,0 +1,31 @@
+# Core packages with compatible versions
+langchain-core>=0.1.13
+langchain-community
+langchain-openai>=0.0.3
+langchain>=0.1.0
+
+python-dotenv
+streamlit
+
+# Vector stores and databases
+chromadb==0.4.22
+faiss-cpu
+
+# Document processing
+PyPDF2
+beautifulsoup4
+
+# Embeddings and transformers
+sentence_transformers
+
+# Optional - Add these only if needed
+langchain-groq
+langserve
+fastapi
+uvicorn
+wikipedia
+arxiv
+langchainhub
+shutil
+logging
+warnings
