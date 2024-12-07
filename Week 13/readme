@@ -1,5 +1,22 @@
-This folder contains all files related to week 13
+Update: MRCONSO, MRSTY, and MRDEF Processing
+MRCONSO.RRF: Implemented processing logic to extract and import concepts into the Neo4j graph database. Focused on English terms (ENG) and prioritized domains critical for USMLE preparation.
 
-Work done in week 13 - 
-We worked on collecting a dataset for the clerkship exam. We collected it but can't upload it on GitHub because of the license.
-Worked on compiling the report, and tried to make it more precise.
+Key Highlights:
+Created nodes for concepts (Concept), capturing attributes like CUI, term, source, and priority.
+Batched processing for efficiency, with safeguards to respect node limits.
+MRSTY.RRF: Processed semantic types and tree numbers to establish relationships between Concept nodes and SemanticType nodes.
+
+Key Highlights:
+Extracted TUI, STN, and STY for semantic types.
+Created HAS_SEMANTIC_TYPE relationships between concepts and their respective semantic types.
+Ensured batch processing for scalability and marked already processed semantic tree numbers to avoid duplication.
+MRDEF.RRF: Parsed definitions to enrich Concept nodes with associated definitions (Definition).
+
+Key Highlights:
+Created HAS_DEFINITION relationships between Concept and Definition nodes.
+Processed definitions in smaller batches for optimized database transactions.
+Overall Enhancements:
+
+Added robust error handling for batch and individual item processing.
+Improved logging to track progress, errors, and metrics during file processing.
+Optimized batch sizes and limited relationships to ensure database integrity and performance.
