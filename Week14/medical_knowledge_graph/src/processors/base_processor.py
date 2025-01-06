@@ -83,3 +83,50 @@ class BaseProcessor(ABC):
             'total_nodes': self._get_node_count(),
             'batch_size': self.batch_size
         }
+ 
+
+
+class DatabaseMixin:
+    """Shared database operations for processors"""
+    
+    def _get_concept_info(self, term: str) -> dict:
+        """Get UMLS concept information for a term"""
+        cypher = """
+        MATCH (c:Concept)
+        WHERE c.term CONTAINS $term
+        RETURN c
+        LIMIT 1
+        """
+        try:
+            result = self.graph.query(cypher, {'term': term})
+            if result:
+                return result[0]['c']
+            return None
+        except Exception as e:
+            logger.error(f"Error getting concept info for {term}: {str(e)}")
+            return None
+
+    def _get_top_relationships(self, cui: str, limit: int = 25) -> list:
+        """Get top N relationships for a concept"""
+        cypher = """
+        MATCH (c1:Concept {cui: $cui})-[r:RELATES_TO]->(c2:Concept)
+        RETURN c2, r
+        LIMIT $limit
+        """
+        try:
+            return self.graph.query(cypher, {'cui': cui, 'limit': limit})
+        except Exception as e:
+            logger.error(f"Error getting relationships for {cui}: {str(e)}")
+            return []
+
+    def _get_definitions(self, cui: str) -> list:
+        """Get definitions for a concept"""
+        cypher = """
+        MATCH (c:Concept {cui: $cui})-[:HAS_DEFINITION]->(d:Definition)
+        RETURN d
+        """
+        try:
+            return self.graph.query(cypher, {'cui': cui})
+        except Exception as e:
+            logger.error(f"Error getting definitions for {cui}: {str(e)}")
+            return []

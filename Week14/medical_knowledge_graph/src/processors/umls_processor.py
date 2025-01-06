@@ -1,16 +1,11 @@
-from neo4j import GraphDatabase
-import os
-from langchain_community.graphs import Neo4jGraph
-from dotenv import load_dotenv
-from pathlib import Path
-from typing import Dict
-from src.processors.base_processor import BaseProcessor
-from src.config.constants import IMPORTANT_RELATIONS, USMLE_DOMAINS
 import logging
-
+from typing import Dict
+from src.processors.base_processor import BaseProcessor, DatabaseMixin
+from src.config.constants import IMPORTANT_RELATIONS, USMLE_DOMAINS
 logger = logging.getLogger(__name__)
 
-class UMLSProcessor(BaseProcessor):
+
+class UMLSProcessor(BaseProcessor,DatabaseMixin):
     def __init__(self, graph):
         super().__init__(graph)
         self.node_limit = 190000
@@ -20,7 +15,7 @@ class UMLSProcessor(BaseProcessor):
         self.processed_stns = set()
         self.important_relations = IMPORTANT_RELATIONS
         self.usmle_domains = USMLE_DOMAINS
-
+        
     def _get_relationship_count(self):
         """Get current relationship count"""
         cypher = "MATCH ()-[r]->() RETURN count(r) as count"
@@ -312,8 +307,41 @@ class UMLSProcessor(BaseProcessor):
         except Exception as e:
             logger.error(f"Error in batch processing relationships: {str(e)}")
             raise
-
+    
     # Cypher query methods
+
+    def _get_concept_info(self, term: str) -> dict:
+        """Get basic concept information for a term"""
+        cypher = """
+        MATCH (c:Concept)
+        WHERE toLower(c.term) CONTAINS toLower($term)
+        OR toLower($term) CONTAINS toLower(c.term)
+        RETURN c.term as term, c.cui as cui, c.domain as domain
+        LIMIT 5
+        """
+        results = self.graph.query(cypher, {'term': term})
+        return [{'term': r['term'], 'cui': r['cui'], 'domain': r['domain']} for r in results]
+
+    def _get_definitions(self, cui: str) -> list:
+        """Get definitions for a concept"""
+        cypher = """
+        MATCH (c:Concept {cui: $cui})-[:HAS_DEFINITION]->(d:Definition)
+        RETURN d.text as definition
+        """
+        results = self.graph.query(cypher, {'cui': cui})
+        return [r['definition'] for r in results]
+
+    def _get_top_relationships(self, cui: str, limit: int = 10) -> list:
+        """Get top relationships for a concept"""
+        cypher = """
+        MATCH (c:Concept {cui: $cui})-[r:RELATES_TO]->(c2:Concept)
+        RETURN r.type as type, c2.term as related_term
+        LIMIT $limit
+        """
+        results = self.graph.query(cypher, {'cui': cui, 'limit': limit})
+        return [{'type': r['type'], 'related_term': r['related_term']} for r in results]
+
+
     def _get_concept_cypher(self):
         """Get Cypher query for concept creation"""
         return """
