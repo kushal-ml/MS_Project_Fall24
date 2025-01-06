@@ -10,7 +10,7 @@ from dotenv import load_dotenv
 from langchain_community.graphs import Neo4jGraph
 import logging
 from src.processors.umls_processor import UMLSProcessor
-
+from src.processors.question_processor import QuestionProcessor
 # Set up logging
 logging.basicConfig(
     level=logging.INFO,
@@ -76,34 +76,42 @@ def main():
         
         # Initialize processor
         processor = UMLSProcessor(graph)
+        question_processor = QuestionProcessor(graph)  # Add this line
         
-        try:
-            # Create indexes first
-            logger.info("Creating indexes...")
-            processor.create_indexes()
+        while True:
+            # Get user input
+            print("\nEnter your medical question (or 'quit' to exit): ", end='')
+            question = input().strip()
             
-            # Get initial statistics
-            initial_stats = processor.get_statistics()
-            logger.info(f"Initial database statistics: {initial_stats}")
-            
-            # Process files
-            logger.info("Starting UMLS data processing...")
-            processor.process_dataset(files)
-            
-            # Get final statistics
-            final_stats = processor.get_statistics()
-            logger.info(f"Final database statistics: {final_stats}")
-            
-            # Calculate and log changes
-            changes = {
-                'nodes_added': final_stats['total_nodes'] - initial_stats['total_nodes'],
-                'relationships_added': final_stats.get('relationships', 0) - initial_stats.get('relationships', 0)
-            }
-            logger.info(f"Processing completed. Changes made: {changes}")
-            
-        except Exception as e:
-            logger.error(f"Error during processing: {str(e)}")
-            raise
+            if question.lower() == 'quit':
+                break
+                
+            try:
+                # Use question_processor instead of processor
+                results = question_processor.process_medical_question(question)
+                
+                print(f"\nResults for: {question}")
+                print("-" * 50)
+                
+                if not results['concepts']:
+                    print("No relevant medical concepts found.")
+                else:
+                    for concept in results['concepts']:
+                        print(f"\nTerm: {concept['term']}")
+                        if concept['definitions']:
+                            print("\nDefinitions:")
+                            for definition in concept['definitions']:
+                                print(f"- {definition}")
+                        if concept['relationships']:
+                            print("\nRelated concepts:")
+                            for rel in concept['relationships']:
+                                print(f"- {rel['type']}: {rel['related_term']}")
+                        print()
+                        
+            except Exception as e:
+                logger.error(f"Error processing question: {str(e)}")
+                print("Sorry, there was an error processing your question. Please try again.")
+                
             
     except Exception as e:
         logger.error(f"Fatal error: {str(e)}")
