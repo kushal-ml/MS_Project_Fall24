@@ -1,133 +1,86 @@
-# scripts/process_question.py
-import os
 import sys
 from pathlib import Path
-import logging
+import os
+
+# Add the project root directory to Python path
+root_dir = str(Path(__file__).parent.parent)
+sys.path.append(root_dir)
+
 from dotenv import load_dotenv
-
-# Add project root to Python path
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(PROJECT_ROOT))
-
-from src.processors.question_processor import QuestionProcessor  # Change this import
-from src.utils.database import DatabaseConnection
+from langchain_community.graphs import Neo4jGraph
+import logging
+from src.processors.question_processor import QuestionProcessor
 
 # Set up logging
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
 logger = logging.getLogger(__name__)
 
-def check_database_exists(graph):
-    """Check if database already has UMLS data"""
-    try:
-        cypher = "MATCH (c:Concept) RETURN count(c) as count"
-        result = graph.query(cypher)
-        concept_count = result[0]['count']
-        logger.info(f"Found {concept_count} existing concepts in database")
-        return concept_count > 0
-    except Exception as e:
-        logger.error(f"Error checking database: {str(e)}")
-        return False
-
-def verify_database_schema():
-    try:
-        # Initialize database connection
-        db = DatabaseConnection()
-        graph = db.get_connection()
-        
-        # Check node labels
-        label_query = """
-        CALL db.labels()
-        YIELD label
-        RETURN collect(label) as labels
-        """
-        labels = graph.query(label_query)
-        logger.info(f"Available labels in database: {labels[0]['labels']}")
-        
-        # Check relationship types
-        rel_query = """
-        CALL db.relationshipTypes()
-        YIELD relationshipType
-        RETURN collect(relationshipType) as types
-        """
-        relationships = graph.query(rel_query)
-        logger.info(f"Available relationship types: {relationships[0]['types']}")
-        
-        # Sample some data
-        sample_query = """
-        MATCH (c:Concept)
-        WHERE c.term IS NOT NULL
-        RETURN c.term as term, c.cui as cui
-        LIMIT 5
-        """
-        samples = graph.query(sample_query)
-        logger.info("Sample concepts:")
-        for sample in samples:
-            logger.info(f"Term: {sample['term']}, CUI: {sample['cui']}")
-            
-    except Exception as e:
-        logger.error(f"Error verifying database schema: {str(e)}")
-
 def main():
-    # Load environment variables
-    load_dotenv()
-    
     try:
-        # Initialize database connection
-        db = DatabaseConnection()
-        graph = db.get_connection()
+        # Load environment variables
+        load_dotenv()
         
-        # Check if database already has data
-        database_exists = check_database_exists(graph)
+        # Initialize Neo4j connection
+        graph = Neo4jGraph(
+            url=os.getenv("NEO4J_URI", "bolt://localhost:7687"),
+            username=os.getenv("NEO4J_USERNAME", "neo4j"),
+            password=os.getenv("NEO4J_PASSWORD")
+        )
         
-        # Use QuestionProcessor instead of UMLSProcessor
-        processor = QuestionProcessor(graph)
+        # Check database connection
+        result = graph.query("CALL dbms.components() YIELD name, versions, edition")
+        logger.info("Successfully connected to Neo4j database")
         
-        verify_database_schema()
+        # Verify database has data
+        node_count = graph.query("MATCH (n) RETURN count(n) as count")[0]['count']
+        if node_count == 0:
+            logger.error("Database is empty. Please run process_umls.py first to load the data.")
+            return
+            
+        # Initialize question processor
+        question_processor = QuestionProcessor(graph)
         
+        # Process questions
         while True:
-            question = input("\nEnter your medical question (or 'quit' to exit): ")
+            print("\nEnter your medical question (or 'quit' to exit): ", end='')
+            question = input().strip()
+            
             if question.lower() == 'quit':
                 break
-            
+                
             try:
-                results = processor.process_medical_question(question)
-                print(f"\nResults for: {results['question']}")
+                results = question_processor.process_medical_question(question)
+                
+                print(f"\nResults for: {question}")
                 print("-" * 50)
                 
                 if not results['concepts']:
                     print("No relevant medical concepts found.")
-                    
-                for concept in results['concepts']:
-                    try:
-                        print(f"\nConcept: {concept.get('term', 'Unknown term')}")
-                        
-                        print("\nDefinitions:")
-                        definitions = concept.get('definitions', [])
-                        if definitions:
-                            for definition in definitions:
+                else:
+                    for concept in results['concepts']:
+                        print(f"\nTerm: {concept['term']}")
+                        if concept['definitions']:
+                            print("\nDefinitions:")
+                            for definition in concept['definitions']:
                                 print(f"- {definition}")
-                        else:
-                            print("No definitions found")
-                            
-                        print("\nRelated Concepts:")
-                        relationships = concept.get('relationships', [])
-                        if relationships:
-                            for rel in relationships:
-                                print(f"- {rel.get('type', 'Unknown type')}: {rel.get('related_term', 'Unknown term')}")
-                        else:
-                            print("No relationships found")
-                        print("-" * 50)
-                    except Exception as e:
-                        logger.error(f"Error displaying concept: {str(e)}")
-                        continue
-            
+                        if concept['relationships']:
+                            print("\nRelated concepts:")
+                            for rel in concept['relationships']:
+                                print(f"- {rel['type']}: {rel['related_term']}")
+                        print()
+                        
             except Exception as e:
-                  logger.error(f"Error processing question: {str(e)}")
-                  print("Sorry, there was an error processing your question. Please try again.")
+                logger.error(f"Error processing question: {str(e)}")
+                print("Sorry, there was an error processing your question. Please try again.")
                 
     except Exception as e:
-        logger.error(f"Error initializing processors: {str(e)}")
+        logger.error(f"Fatal error: {str(e)}")
         raise
+    finally:
+        logger.info("Question processing script completed")
 
 if __name__ == "__main__":
     main()
