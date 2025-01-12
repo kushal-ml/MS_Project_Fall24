@@ -1,48 +1,41 @@
 import logging
 from typing import Dict
 from src.processors.base_processor import BaseProcessor, DatabaseMixin
-from src.config.constants import IMPORTANT_RELATIONS, USMLE_DOMAINS
+from src.config.constants import IMPORTANT_RELATIONS, USMLE_DOMAINS,IMPORTANT_SEMANTIC_TYPE
 logger = logging.getLogger(__name__)
 
 
 class UMLSProcessor(BaseProcessor,DatabaseMixin):
     def __init__(self, graph):
         super().__init__(graph)
-        self.node_limit = 190000
-        self.relationship_limit = 200000  # Added relationship limit
-        self.batch_size = 50  # Reduced batch size
+        self.node_limit = 100000  # Reduced limit
+        self.relationship_limit = 150000  # Reduced limit
+        self.batch_size = 50  # Smaller batch size for better memory management
         self.processed_concepts = set()
-        self.processed_stns = set()
         self.important_relations = IMPORTANT_RELATIONS
         self.usmle_domains = USMLE_DOMAINS
-        
-    def _get_relationship_count(self):
-        """Get current relationship count"""
-        cypher = "MATCH ()-[r]->() RETURN count(r) as count"
-        result = self.graph.query(cypher)
-        return result[0]['count']
+        self.important_semantic_types = IMPORTANT_SEMANTIC_TYPE
 
     def create_indexes(self):
-        """Create necessary indexes"""
+        """Create essential indexes only"""
         indexes = [
             "CREATE INDEX IF NOT EXISTS FOR (c:Concept) ON (c.cui)",
-            "CREATE INDEX IF NOT EXISTS FOR (c:Concept) ON (c.domain)",
-            "CREATE INDEX IF NOT EXISTS FOR (c:Concept) ON (c.priority)",
-            "CREATE INDEX IF NOT EXISTS FOR (st:SemanticType) ON (st.tui)",
-            "CREATE INDEX IF NOT EXISTS FOR (d:Definition) ON (d.id)"
+            "CREATE INDEX IF NOT EXISTS FOR (c:Concept) ON (c.term)",
+            "CREATE INDEX IF NOT EXISTS FOR (c:Concept) ON (c.semantic_type)",
+            "CREATE INDEX IF NOT EXISTS FOR (c:Concept) ON (c.semantic_type_id)",
+            "CREATE INDEX IF NOT EXISTS FOR (st:SemanticType) ON (st.type_id)",
+            "CREATE INDEX IF NOT EXISTS FOR (st:SemanticType) ON (st.name)"
         ]
         for index in indexes:
             self.graph.query(index)
 
     def process_dataset(self, file_paths):
-        """Process all UMLS files"""
+        """Process core UMLS files"""
         try:
-            # Check node limit before processing
             if self._get_node_count() >= self.node_limit:
                 logger.warning(f"Node limit reached: {self._get_node_count()} nodes")
                 return
 
-            # Process each file in order
             self.process_mrconso(file_paths['mrconso'])
             self._load_processed_concepts()
             self.process_mrrel(file_paths['mrrel'])
@@ -54,7 +47,7 @@ class UMLSProcessor(BaseProcessor,DatabaseMixin):
             raise
 
     def process_mrconso(self, file_path):
-        """Process MRCONSO.RRF with USMLE focus"""
+        """Process MRCONSO.RRF with strict filtering"""
         try:
             batch = []
             processed = 0
@@ -74,7 +67,6 @@ class UMLSProcessor(BaseProcessor,DatabaseMixin):
                 if batch:
                     self._process_batch(batch, self._get_concept_cypher())
 
-            self.processed_items.update([item['cui'] for item in batch])
             logger.info(f"Total concepts processed: {processed}")
 
         except Exception as e:
@@ -82,43 +74,29 @@ class UMLSProcessor(BaseProcessor,DatabaseMixin):
             raise
 
     def process_mrrel(self, file_path):
-        """Process MRREL with relationship limit"""
-        logger.info("Processing MRREL.RRF...")
+        """Process MRREL with strict relationship filtering"""
         try:
-            # Check current relationship count
             current_count = self._get_relationship_count()
-            remaining_relationships = self.relationship_limit - current_count
+            remaining = self.relationship_limit - current_count
             
-            if remaining_relationships <= 0:
-                logger.warning("Relationship limit already reached")
+            if remaining <= 0:
+                logger.warning("Relationship limit reached")
                 return
                 
-            logger.info(f"Current relationships: {current_count}")
-            logger.info(f"Remaining relationships: {remaining_relationships}")
-            
-            # Load processed concepts
-            self._load_processed_concepts()
-            
             batch = []
             processed = 0
-            skipped = 0
             
             with open(file_path, 'r', encoding='utf-8') as f:
                 for line in f:
-                    if processed >= remaining_relationships:
-                        logger.warning(f"Reached relationship limit of {self.relationship_limit}")
+                    if processed >= remaining:
                         break
 
                     fields = line.strip().split('|')
-                    cui1 = fields[0]
-                    cui2 = fields[4]
-                    rel_type = fields[3]
+                    cui1, cui2, rel_type = fields[0], fields[4], fields[3]
 
-                    # Skip if concepts not in processed set or non-important relationships
                     if (cui1 not in self.processed_concepts or 
                         cui2 not in self.processed_concepts or
                         rel_type not in self.important_relations):
-                        skipped += 1
                         continue
 
                     relationship = {
@@ -131,53 +109,43 @@ class UMLSProcessor(BaseProcessor,DatabaseMixin):
                     processed += 1
                     
                     if len(batch) >= self.batch_size:
-                        try:
-                            # Check if adding batch would exceed limit
-                            if (current_count + len(batch)) > self.relationship_limit:
-                                # Process individually up to limit
-                                remaining = self.relationship_limit - current_count
-                                for i in range(remaining):
-                                    self._create_single_relationship(batch[i])
-                                logger.info(f"Reached relationship limit during batch processing")
-                                return
-                                
-                            self._create_relationships_batch(batch)
-                            current_count += len(batch)
-                            logger.info(f"Processed {processed} relationships")
-                            batch = []
-                        except Exception as e:
-                            logger.error(f"Batch processing error: {str(e)}")
-                            batch = []
-                            
-            if batch:
-                # Check final batch
-                if (current_count + len(batch)) <= self.relationship_limit:
+                        self._create_relationships_batch(batch)
+                        batch = []
+
+                if batch:
                     self._create_relationships_batch(batch)
-                
+                        
             logger.info(f"Total relationships processed: {processed}")
-            logger.info(f"Skipped relationships: {skipped}")
                         
         except Exception as e:
             logger.error(f"Error processing MRREL: {str(e)}")
             raise
 
     def process_mrdef(self, file_path):
-        """Process MRDEF with definitions"""
+        """Process MRDEF selectively"""
         try:
             batch = []
             processed = 0
             
             with open(file_path, 'r', encoding='utf-8') as f:
                 for line in f:
-                    definition = self._parse_mrdef_line(line)
-                    if definition:
-                        batch.append(definition)
-                        processed += 1
+                    fields = line.strip().split('|')
+                    cui = fields[0]
+                    
+                    if cui not in self.processed_concepts:
+                        continue
+                        
+                    definition = {
+                        'cui': cui,
+                        'text': fields[5],
+                        'def_id': f"DEF_{cui}"
+                    }
+                    batch.append(definition)
+                    processed += 1
 
-                        if len(batch) >= self.batch_size:
-                            self._process_batch(batch, self._get_definition_cypher())
-                            logger.info(f"Processed {processed} definitions")
-                            batch = []
+                    if len(batch) >= self.batch_size:
+                        self._process_batch(batch, self._get_definition_cypher())
+                        batch = []
 
                 if batch:
                     self._process_batch(batch, self._get_definition_cypher())
@@ -189,40 +157,87 @@ class UMLSProcessor(BaseProcessor,DatabaseMixin):
             raise
 
     def process_mrsty(self, file_path):
-        """Process MRSTY.RRF for semantic types"""
+        """Process MRSTY.RRF to add semantic types to concepts"""
         try:
             batch = []
             processed = 0
+            skipped = 0
             
             with open(file_path, 'r', encoding='utf-8') as f:
                 for line in f:
-                    semantic_type = self._parse_mrsty_line(line)
-                    if semantic_type and semantic_type['stn'] not in self.processed_stns:
-                        batch.append(semantic_type)
-                        processed += 1
+                    fields = line.strip().split('|')
+                    cui = fields[0]
+                    semantic_type_id = fields[1]  # TUI field
+                    semantic_type_name = fields[3]  # STY field
+                    
+                    # Only process if concept exists and semantic type is important
+                    if cui in self.processed_concepts:
+                        if semantic_type_id in self.important_semantic_types:
+                            batch.append({
+                                'cui': cui,
+                                'semantic_type': self.important_semantic_types[semantic_type_id],
+                                'semantic_type_id': semantic_type_id,
+                                'original_name': semantic_type_name
+                            })
+                            processed += 1
+                        else:
+                            skipped += 1
 
                         if len(batch) >= self.batch_size:
-                            self._process_batch(batch, self._get_semantic_type_cypher())
-                            self.processed_stns.update(item['stn'] for item in batch)
+                            self._update_semantic_types_batch(batch)
                             logger.info(f"Processed {processed} semantic types")
                             batch = []
 
                 if batch:
-                    self._process_batch(batch, self._get_semantic_type_cypher())
-                    self.processed_stns.update(item['stn'] for item in batch)
+                    self._update_semantic_types_batch(batch)
 
-            logger.info(f"Total semantic types processed: {processed}")
+            logger.info(f"Semantic types processing complete - Added: {processed}, Skipped: {skipped}")
 
         except Exception as e:
             logger.error(f"Error processing MRSTY: {str(e)}")
             raise
+        
+    def _update_semantic_types_batch(self, batch):
+        """Update concepts with semantic types in batch"""
+        try:
+            # Update existing concepts with semantic type information
+            cypher = """
+            UNWIND $batch AS item
+            MATCH (c:Concept {cui: item.cui})
+            SET c.semantic_type = item.semantic_type,
+                c.semantic_type_id = item.semantic_type_id,
+                c.original_semantic_name = item.original_name
+            """
+            self.graph.query(cypher, {'batch': batch})
+            
+            # Optionally create semantic type nodes and relationships
+            cypher_semantic_nodes = """
+            UNWIND $batch AS item
+            MERGE (st:SemanticType {type_id: item.semantic_type_id})
+            SET st.name = item.semantic_type
+            WITH st, item
+            MATCH (c:Concept {cui: item.cui})
+            MERGE (c)-[r:HAS_SEMANTIC_TYPE]->(st)
+            """
+            self.graph.query(cypher_semantic_nodes, {'batch': batch})
+            
+        except Exception as e:
+            logger.error(f"Error updating semantic types batch: {str(e)}")
+            # Try processing one by one if batch fails
+            for item in batch:
+                try:
+                    self.graph.query("""
+                    MATCH (c:Concept {cui: $cui})
+                    SET c.semantic_type = $semantic_type
+                    """, item)
+                except Exception as inner_e:
+                    logger.error(f"Error updating individual semantic type: {str(inner_e)}")
 
-    # Helper methods for parsing lines
     def _parse_mrconso_line(self, line):
-        """Parse MRCONSO line into concept dictionary"""
+        """Parse MRCONSO line with strict filtering"""
         fields = line.strip().split('|')
         
-        if fields[1] != "ENG":  # Process only English terms
+        if fields[1] != "ENG":  # English only
             return None
 
         source = fields[11]
@@ -240,107 +255,15 @@ class UMLSProcessor(BaseProcessor,DatabaseMixin):
             'priority': domain_info['priority']
         }
 
-    def _parse_mrrel_line(self, line):
-        """Parse MRREL line into relationship dictionary"""
-        fields = line.strip().split('|')
-        cui1, cui2, rel_type = fields[0], fields[4], fields[3]
-        
-        if (cui1 not in self.processed_concepts or 
-            cui2 not in self.processed_concepts or
-            rel_type not in self.important_relations):
-            return None
-            
-        return {
-            'cui1': cui1,
-            'cui2': cui2,
-            'rel_type': self.important_relations[rel_type],
-            'source': fields[10]
-        }
-
-    def _parse_mrdef_line(self, line):
-        """Parse MRDEF line into definition dictionary"""
-        fields = line.strip().split('|')
-        cui = fields[0]
-        
-        if cui not in self.processed_concepts:
-            return None
-            
-        return {
-            'cui': cui,
-            'source': fields[4],
-            'text': fields[5],
-            'def_id': f"DEF_{cui}_{fields[4]}"
-        }
-
-    def _parse_mrsty_line(self, line):
-        """Parse MRSTY line into semantic type dictionary"""
-        fields = line.strip().split('|')
-        return {
-            'cui': fields[0],
-            'tui': fields[1],
-            'stn': fields[2],
-            'sty': fields[3]
-        }
-
-    def _create_single_relationship(self, rel):
-        """Create a single relationship"""
-        cypher = """
-        MATCH (c1:Concept {cui: $cui1})
-        MATCH (c2:Concept {cui: $cui2})
-        MERGE (c1)-[r:RELATES_TO {
-            type: $rel_type,
-            source: $source
-        }]->(c2)
-        """
-        self.graph.query(cypher, rel)
-
     def _create_relationships_batch(self, batch):
         """Create relationships in batch"""
-        try:
-            cypher = """
-            UNWIND $batch AS rel
-            MATCH (c1:Concept {cui: rel.cui1})
-            MATCH (c2:Concept {cui: rel.cui2})
-            MERGE (c1)-[r:RELATES_TO {type: rel.rel_type, source: rel.source}]->(c2)
-            """
-            self.graph.query(cypher, {'batch': batch})
-        except Exception as e:
-            logger.error(f"Error in batch processing relationships: {str(e)}")
-            raise
-    
-    # Cypher query methods
-
-    def _get_concept_info(self, term: str) -> dict:
-        """Get basic concept information for a term"""
         cypher = """
-        MATCH (c:Concept)
-        WHERE toLower(c.term) CONTAINS toLower($term)
-        OR toLower($term) CONTAINS toLower(c.term)
-        RETURN c.term as term, c.cui as cui, c.domain as domain
-        LIMIT 5
+        UNWIND $batch AS rel
+        MATCH (c1:Concept {cui: rel.cui1})
+        MATCH (c2:Concept {cui: rel.cui2})
+        MERGE (c1)-[r:RELATES_TO {type: rel.rel_type}]->(c2)
         """
-        results = self.graph.query(cypher, {'term': term})
-        return [{'term': r['term'], 'cui': r['cui'], 'domain': r['domain']} for r in results]
-
-    def _get_definitions(self, cui: str) -> list:
-        """Get definitions for a concept"""
-        cypher = """
-        MATCH (c:Concept {cui: $cui})-[:HAS_DEFINITION]->(d:Definition)
-        RETURN d.text as definition
-        """
-        results = self.graph.query(cypher, {'cui': cui})
-        return [r['definition'] for r in results]
-
-    def _get_top_relationships(self, cui: str, limit: int = 10) -> list:
-        """Get top relationships for a concept"""
-        cypher = """
-        MATCH (c:Concept {cui: $cui})-[r:RELATES_TO]->(c2:Concept)
-        RETURN r.type as type, c2.term as related_term
-        LIMIT $limit
-        """
-        results = self.graph.query(cypher, {'cui': cui, 'limit': limit})
-        return [{'type': r['type'], 'related_term': r['related_term']} for r in results]
-
+        self.graph.query(cypher, {'batch': batch})
 
     def _get_concept_cypher(self):
         """Get Cypher query for concept creation"""
@@ -348,18 +271,8 @@ class UMLSProcessor(BaseProcessor,DatabaseMixin):
         UNWIND $batch as concept
         MERGE (c:Concept {cui: concept.cui})
         SET c.term = concept.term,
-            c.source = concept.source,
             c.domain = concept.domain,
             c.priority = concept.priority
-        """
-
-    def _get_relationship_cypher(self):
-        """Get Cypher query for relationship creation"""
-        return """
-        UNWIND $batch as rel
-        MATCH (c1:Concept {cui: rel.cui1})
-        MATCH (c2:Concept {cui: rel.cui2})
-        MERGE (c1)-[r:RELATES_TO {type: rel.rel_type, source: rel.source}]->(c2)
         """
 
     def _get_definition_cypher(self):
@@ -368,53 +281,221 @@ class UMLSProcessor(BaseProcessor,DatabaseMixin):
         UNWIND $batch as def
         MATCH (c:Concept {cui: def.cui})
         MERGE (d:Definition {id: def.def_id})
-        SET d.text = def.text,
-            d.source = def.source
+        SET d.text = def.text
         MERGE (c)-[r:HAS_DEFINITION]->(d)
         """
 
-    def _get_semantic_type_cypher(self):
-        """Get Cypher query for semantic type creation"""
-        return """
-        UNWIND $batch as item
-        MERGE (st:SemanticType {tui: item.tui})
-        SET st.name = item.sty,
-            st.tree_number = item.stn
-        MERGE (c:Concept {cui: item.cui})
-        MERGE (c)-[r:HAS_SEMANTIC_TYPE]->(st)
-        """
-
     def _load_processed_concepts(self):
-        """Load processed concepts from the graph"""
-        try:
-            cypher = "MATCH (c:Concept) RETURN c.cui"
-            result = self.graph.query(cypher)
-            self.processed_concepts = {record['c.cui'] for record in result}
-            logger.info(f"Loaded {len(self.processed_concepts)} processed concepts")
-        except Exception as e:
-            logger.error(f"Error loading processed concepts: {str(e)}")
-            raise
+        """Load processed concepts from graph"""
+        cypher = "MATCH (c:Concept) RETURN c.cui"
+        result = self.graph.query(cypher)
+        self.processed_concepts = {record['c.cui'] for record in result}
+        logger.info(f"Loaded {len(self.processed_concepts)} processed concepts")
 
     def _get_domain_priority(self, source, tty):
-        """Determine domain and priority for a concept"""
+        """Get domain and priority info"""
         if source not in self.usmle_domains:
             return None
 
-        for priority in ['priority_1', 'priority_2']:
+        for priority in ['priority_1']:  # Only check priority_1
             if tty in self.usmle_domains[source].get(priority, {}):
                 return {
                     'domain': self.usmle_domains[source][priority][tty],
                     'priority': priority
                 }
         return None
+    
 
-    def get_statistics(self) -> Dict[str, int]:
-        """Get extended statistics including UMLS-specific metrics"""
-        base_stats = super().get_statistics()
-        return {
-            **base_stats,
-            'concepts': len(self.processed_concepts),
-            'semantic_types': len(self.processed_stns),
-            'relationships': self._get_relationship_count(),
-            'available_nodes': self.node_limit - self._get_node_count()
-        }
+
+    def _get_relationship_count(self):
+        """Get current count of all relationships in the database"""
+        try:
+            # Count all relationships regardless of type
+            cypher = """
+            MATCH ()-[r]->() 
+            RETURN count(r) as count
+            """
+            result = self.graph.query(cypher)
+            return result[0]['count'] if result else 0
+        except Exception as e:
+            logger.error(f"Error getting relationship count: {str(e)}")
+            return 0
+
+    def _get_node_count(self):
+        """Get current count of concept nodes in the database"""
+        try:
+            # First check if Concept label exists
+            check_label = """
+            CALL db.labels() 
+            YIELD label 
+            RETURN count(label) as count 
+            WHERE label = 'Concept'
+            """
+            label_exists = self.graph.query(check_label)
+            
+            if not label_exists or label_exists[0]['count'] == 0:
+                return 0
+                
+            # If label exists, count nodes
+            cypher = """
+            MATCH (c:Concept) 
+            RETURN count(c) as count
+            """
+            result = self.graph.query(cypher)
+            return result[0]['count'] if result else 0
+        except Exception as e:
+            logger.error(f"Error getting node count: {str(e)}")
+            return 0
+
+    # Change this method
+    def _create_relationships_batch(self, batch):
+        """Create relationships in batch"""
+        try:
+            # Instead of creating generic RELATES_TO relationships,
+            # create relationships with their specific types
+            cypher = """
+            UNWIND $batch AS rel
+            MATCH (c1:Concept {cui: rel.cui1})
+            MATCH (c2:Concept {cui: rel.cui2})
+            CALL apoc.merge.relationship(c1, rel.rel_type, {}, {}, c2)
+            YIELD rel as created
+            RETURN count(created) as count
+            """
+            self.graph.query(cypher, {'batch': batch})
+        except Exception as e:
+            # Fallback without APOC
+            cypher = """
+            UNWIND $batch AS rel
+            MATCH (c1:Concept {cui: rel.cui1})
+            MATCH (c2:Concept {cui: rel.cui2})
+            MERGE (c1)-[r:`${rel.rel_type}`]->(c2)
+            """
+            self.graph.query(cypher, {'batch': batch})
+
+
+    def get_concepts_by_semantic_type(self, semantic_type: str, limit: int = 100):
+        """Get concepts of a specific semantic type"""
+        try:
+            cypher = """
+            MATCH (c:Concept)-[:HAS_SEMANTIC_TYPE]->(st:SemanticType)
+            WHERE st.name = $semantic_type
+            RETURN c.cui as cui, c.term as term, c.semantic_type as type
+            LIMIT $limit
+            """
+            results = self.graph.query(cypher, {
+                'semantic_type': semantic_type,
+                'limit': limit
+            })
+            return [dict(result) for result in results]
+        except Exception as e:
+            logger.error(f"Error getting concepts by semantic type: {str(e)}")
+            return []
+
+    def get_semantic_types_for_concept(self, cui: str):
+        """Get all semantic types for a specific concept"""
+        try:
+            cypher = """
+            MATCH (c:Concept {cui: $cui})-[:HAS_SEMANTIC_TYPE]->(st:SemanticType)
+            RETURN st.name as semantic_type, st.type_id as type_id
+            """
+            results = self.graph.query(cypher, {'cui': cui})
+            return [{'semantic_type': result['semantic_type']} for result in results]
+        except Exception as e:
+            logger.error(f"Error getting semantic types for concept {cui}: {str(e)}")
+            return []
+
+    def get_all_semantic_types(self):
+        """Get list of all semantic types in the database"""
+        try:
+            cypher = """
+            MATCH (st:SemanticType)
+            RETURN st.name as name, st.type_id as type_id,
+                   count((st)<-[:HAS_SEMANTIC_TYPE]-()) as concept_count
+            ORDER BY concept_count DESC
+            """
+            results = self.graph.query(cypher)
+            return [dict(result) for result in results]
+        except Exception as e:
+            logger.error(f"Error getting all semantic types: {str(e)}")
+            return []
+
+    def get_related_concepts_by_semantic_type(self, cui: str, semantic_type: str, limit: int = 10):
+        """Get related concepts of a specific semantic type"""
+        try:
+            cypher = """
+            MATCH (c1:Concept {cui: $cui})-[r]->(c2:Concept)-[:HAS_SEMANTIC_TYPE]->(st:SemanticType)
+            WHERE st.name = $semantic_type
+            RETURN c2.term as related_term, 
+                   c2.cui as related_cui,
+                   type(r) as relationship_type
+            LIMIT $limit
+            """
+            results = self.graph.query(cypher, {
+                'cui': cui,
+                'semantic_type': semantic_type,
+                'limit': limit
+            })
+            return [dict(result) for result in results]
+        except Exception as e:
+            logger.error(f"Error getting related concepts by semantic type: {str(e)}")
+            return []
+
+    def get_semantic_type_statistics(self):
+        """Get statistics about semantic types usage"""
+        try:
+            cypher = """
+            MATCH (st:SemanticType)
+            OPTIONAL MATCH (st)<-[:HAS_SEMANTIC_TYPE]-(c:Concept)
+            WITH st.name as semantic_type, 
+                 count(c) as concept_count,
+                 count(DISTINCT (c)-[]->()) as relationship_count
+            RETURN semantic_type, concept_count, relationship_count
+            ORDER BY concept_count DESC
+            """
+            results = self.graph.query(cypher)
+            return [dict(result) for result in results]
+        except Exception as e:
+            logger.error(f"Error getting semantic type statistics: {str(e)}")
+            return []
+
+    def find_concepts_by_semantic_type_and_term(self, semantic_type: str, term_pattern: str, limit: int = 10):
+        """Find concepts of a specific semantic type matching a term pattern"""
+        try:
+            cypher = """
+            MATCH (c:Concept)-[:HAS_SEMANTIC_TYPE]->(st:SemanticType)
+            WHERE st.name = $semantic_type
+            AND toLower(c.term) CONTAINS toLower($term_pattern)
+            RETURN c.cui as cui, 
+                   c.term as term,
+                   c.semantic_type as type
+            LIMIT $limit
+            """
+            results = self.graph.query(cypher, {
+                'semantic_type': semantic_type,
+                'term_pattern': term_pattern,
+                'limit': limit
+            })
+            return [dict(result) for result in results]
+        except Exception as e:
+            logger.error(f"Error finding concepts by semantic type and term: {str(e)}")
+            return []
+
+    def get_semantic_type_hierarchy(self):
+        """Get hierarchical relationships between semantic types"""
+        try:
+            cypher = """
+            MATCH (st1:SemanticType)
+            OPTIONAL MATCH (st1)<-[:HAS_SEMANTIC_TYPE]-(c:Concept)-[:broader_than|parent_of]->(c2)-[:HAS_SEMANTIC_TYPE]->(st2:SemanticType)
+            WHERE st1 <> st2
+            WITH st1.name as semantic_type, 
+                 st2.name as broader_type,
+                 count(DISTINCT c) as concept_count
+            WHERE broader_type IS NOT NULL
+            RETURN semantic_type, broader_type, concept_count
+            ORDER BY concept_count DESC
+            """
+            results = self.graph.query(cypher)
+            return [dict(result) for result in results]
+        except Exception as e:
+            logger.error(f"Error getting semantic type hierarchy: {str(e)}")
+            return []

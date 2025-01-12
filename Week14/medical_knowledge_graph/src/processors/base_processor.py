@@ -109,12 +109,16 @@ class DatabaseMixin:
     def _get_top_relationships(self, cui: str, limit: int = 25) -> list:
         """Get top N relationships for a concept"""
         cypher = """
-        MATCH (c1:Concept {cui: $cui})-[r:RELATES_TO]->(c2:Concept)
-        RETURN c2, r
+        MATCH (c1:Concept {cui: $cui})-[r]->(c2:Concept)
+        WHERE type(r) IN ['broader_than', 'child_of', 'HAS_DEFINITION', 'narrower_than', 'parent_of', 'synonym_of']
+        RETURN c2.term as related_term, type(r) as type
         LIMIT $limit
         """
         try:
-            return self.graph.query(cypher, {'cui': cui, 'limit': limit})
+            results = self.graph.query(cypher, {'cui': cui, 'limit': limit})
+            return [{'related_term': result['related_term'], 
+                    'type': result['type']} 
+                    for result in results]
         except Exception as e:
             logger.error(f"Error getting relationships for {cui}: {str(e)}")
             return []

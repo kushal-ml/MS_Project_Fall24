@@ -63,7 +63,7 @@ class QuestionProcessor(BaseProcessor):
             test_results = self.graph.query(test_cypher)
             logger.info(f"Sample terms in database: {[r['term'] for r in test_results]}")
             
-            # Get concepts for each term using UMLS processor helper methods
+            # Get concepts for each term
             results = []
             for term in all_terms:
                 # Modified query for debugging
@@ -83,16 +83,19 @@ class QuestionProcessor(BaseProcessor):
                 logger.info(f"Found {len(concepts)} matches for term '{term}'")
                 
                 for concept in concepts:
+                    # Get semantic types for the concept
+                    semantic_types = self.umls_processor.get_semantic_types_for_concept(concept['cui'])
+            
                     concept_data = {
                         'term': concept['term'],
                         'cui': concept['cui'],
-                        'domain': concept['domain'],
-                        'definitions': self.umls_processor._get_definitions(concept['cui']),
+                        'semantic_types': semantic_types,
+                        'definitions': [{'d': {'text': d['d']['text']}} for d in self.umls_processor._get_definitions(concept['cui'])],
                         'relationships': self.umls_processor._get_top_relationships(concept['cui'])
                     }
-                    if concept_data['definitions']:  # Only include if it has definitions
+                    if concept_data['definitions']:
                         results.append(concept_data)
-            
+
             # Remove duplicates based on CUI
             seen_cuis = set()
             unique_results = []
@@ -102,7 +105,33 @@ class QuestionProcessor(BaseProcessor):
                     unique_results.append(r)
             
             logger.info(f"Found {len(unique_results)} relevant concepts")
-            
+
+            print(f"\nResults for: {question}")
+            print("-" * 50)
+
+            if not unique_results:
+                print("No relevant medical concepts found.")
+            else:
+                for concept in unique_results:
+                    print(f"\nTerm: {concept['term']}")
+                    
+                    # Print semantic types
+                    if concept['semantic_types']:
+                        print("\nSemantic Types:")
+                        for st in concept['semantic_types']:
+                            print(f"- {st['semantic_type']}")
+                    
+                    if concept['definitions']:
+                        print("\nDefinitions:")
+                        for definition in concept['definitions']:
+                            print(f"- {definition['d']['text']}")  # Updated to access definition text correctly
+                    
+                    if concept['relationships']:
+                        print("\nRelated concepts:")
+                        for rel in concept['relationships']:
+                            print(f"- {rel['type']}: {rel['related_term']}")
+                    print()
+
             return {
                 'question': question,
                 'concepts': unique_results
@@ -111,3 +140,4 @@ class QuestionProcessor(BaseProcessor):
         except Exception as e:
             logger.error(f"Error processing medical question: {str(e)}")
             raise
+
