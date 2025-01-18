@@ -7,6 +7,8 @@ Week14/medical_knowledge_graph/data/raw/umls/MRCONSO.RRF
 Week14/medical_knowledge_graph/data/raw/umls/MRDEF.RRF
 Week14/medical_knowledge_graph/data/raw/umls/MRREL.RRF
 Week14/medical_knowledge_graph/data/raw/umls/MRSTY.RRF
+Week14/medical_knowledge_graph/data/raw/umls/MRHIER.RRF
+Week14/medical_knowledge_graph/data/raw/umls/MRSAT.RRF
 
 # Processed data directory
 Week14/medical_knowledge_graph/data/processed/
