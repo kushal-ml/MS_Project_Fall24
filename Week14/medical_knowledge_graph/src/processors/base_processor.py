@@ -83,8 +83,26 @@ class BaseProcessor(ABC):
             'total_nodes': self._get_node_count(),
             'batch_size': self.batch_size
         }
- 
 
+    @abstractmethod
+    def process_dataset(self, file_paths: Dict):
+        """Process the dataset"""
+        pass
+
+    @abstractmethod
+    def create_indexes(self):
+        """Create database indexes"""
+        pass
+
+    @abstractmethod
+    def validate_data(self, data):
+        """Validate input data"""
+        pass
+
+    @abstractmethod
+    def preprocess_data(self, data):
+        """Preprocess data before insertion"""
+        pass
 
 class DatabaseMixin:
     """Shared database operations for processors"""
@@ -134,3 +152,13 @@ class DatabaseMixin:
         except Exception as e:
             logger.error(f"Error getting definitions for {cui}: {str(e)}")
             return []
+
+    @abstractmethod
+    def _process_batch(self, batch, cypher_query):
+        """Process a batch of data"""
+        pass
+
+    @abstractmethod
+    def _handle_failed_batch(self, batch):
+        """Handle failed batch processing"""
+        pass
