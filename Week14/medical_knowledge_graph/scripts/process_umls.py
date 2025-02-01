@@ -10,6 +10,8 @@ from dotenv import load_dotenv
 from langchain_community.graphs import Neo4jGraph
 import logging
 from src.processors.umls_processor import UMLSProcessor
+from src.config.constants import IMPORTANT_SEMANTIC_TYPE
+from tenacity import RetryError
 
 # Set up logging
 logging.basicConfig(
@@ -45,7 +47,8 @@ def main():
             'mrconso': base_path / "MRCONSO.RRF",
             'mrrel': base_path / "MRREL.RRF",
             'mrdef': base_path / "MRDEF.RRF",
-            'mrsty': base_path / "MRSTY.RRF"
+            'mrsty': base_path / "MRSTY.RRF",
+            'mrhier': base_path / "MRHIER.RRF"
         }
         
         # Check if files exist
@@ -55,8 +58,25 @@ def main():
                 return
 
         # Initialize UMLS processor and load data
-        processor = UMLSProcessor(graph)
+        processor = UMLSProcessor(
+            graph,
+            max_retries=3,
+            min_wait=1,
+            max_wait=10
+        )
+        # analysis = processor.diagnose_missing_relationships(files['mrrel'])
         logger.info("Starting UMLS data processing...")
+        
+        # Process new additions and capture statistics
+        print("\nStarting to process new additions...")
+        stats = processor.process_new_additions()
+
+        # Print processing results
+        print("\nProcessing Summary:")
+        print(f"✓ Added {stats['new_concepts']:,} new concepts")
+        print(f"✓ Added {stats['new_relationships']:,} new relationships")
+        print(f"✓ Added {stats['new_semantic_types']:,} new semantic type mappings")
+        print(f"✓ Total processing time: {stats['processing_time']:.1f} seconds")
         
         # Create indexes first
         processor.create_indexes()
@@ -68,7 +88,55 @@ def main():
         node_count = graph.query("MATCH (n) RETURN count(n) as count")[0]['count']
         rel_count = graph.query("MATCH ()-[r]->() RETURN count(r) as count")[0]['count']
         logger.info(f"UMLS data loaded - Nodes: {node_count}, Relationships: {rel_count}")
+        
+        # Print current mapping
+        print("Current Semantic Type Mapping:")
+        processor.print_semantic_type_mapping()
+
+        # Check current state
+        print("\nCurrent State of Semantic Type Nodes:")
+        processor.check_semantic_type_nodes()
+
+        print("\nSemantic Types:")
+        for type_id, name in processor.important_semantic_types.items():
+            print(f"{type_id}: {name}")
+
+        # Update semantic types
+        print("\nUpdating Semantic Types:")
+        stats = processor.update_semantic_types_from_constants()
+        
+        # Verify all relationships
+        processor.verify_hierarchy_relationships()
+
+        # Add labels to existing concepts
+        processor.add_concept_labels()
+
+        # Create clinical relationships
+        processor.create_clinical_relationships()
+
+        
+        # Verify final state
+        print("\nFinal State of Semantic Type Nodes:")
+        processor.check_semantic_type_nodes()
                 
+        # Create missing concepts and relationships
+        deleted_count = processor.cleanup_duplicate_relationships()
+        print(f"Cleaned up {deleted_count} duplicate relationships")
+        
+        results = processor.create_missing_concepts_and_relationships(
+            mrrel_file=files['mrrel'],
+            mrconso_file=files['mrconso'],
+            mrsty_file=files['mrsty']
+        )
+        
+        logger.info(f"""
+        Processing completed:
+        - Created concepts: {results['concepts_created']}
+        - Created relationships: {results['relationships_created']}
+        """)
+        
+        return results
+        
     except Exception as e:
         logger.error(f"Fatal error: {str(e)}")
         raise
