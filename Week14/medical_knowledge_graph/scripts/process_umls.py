@@ -48,7 +48,7 @@ def main():
             'mrrel': base_path / "MRREL.RRF",
             'mrdef': base_path / "MRDEF.RRF",
             'mrsty': base_path / "MRSTY.RRF",
-            'mrhier': base_path / "MRHIER.RRF"
+            # 'mrhier': base_path / "MRHIER.RRF"
         }
         
         # Check if files exist
@@ -64,19 +64,19 @@ def main():
             min_wait=1,
             max_wait=10
         )
-        # analysis = processor.diagnose_missing_relationships(files['mrrel'])
+        analysis = processor.diagnose_missing_relationships(files['mrrel'])
         logger.info("Starting UMLS data processing...")
         
         # Process new additions and capture statistics
-        print("\nStarting to process new additions...")
-        stats = processor.process_new_additions()
+        # print("\nStarting to process new additions...")
+        # stats = processor.process_new_additions()
 
-        # Print processing results
-        print("\nProcessing Summary:")
-        print(f"✓ Added {stats['new_concepts']:,} new concepts")
-        print(f"✓ Added {stats['new_relationships']:,} new relationships")
-        print(f"✓ Added {stats['new_semantic_types']:,} new semantic type mappings")
-        print(f"✓ Total processing time: {stats['processing_time']:.1f} seconds")
+        # # Print processing results
+        # print("\nProcessing Summary:")
+        # print(f"✓ Added {stats['new_concepts']:,} new concepts")
+        # print(f"✓ Added {stats['new_relationships']:,} new relationships")
+        # print(f"✓ Added {stats['new_semantic_types']:,} new semantic type mappings")
+        # print(f"✓ Total processing time: {stats['processing_time']:.1f} seconds")
         
         # Create indexes first
         processor.create_indexes()
@@ -101,18 +101,13 @@ def main():
         for type_id, name in processor.important_semantic_types.items():
             print(f"{type_id}: {name}")
 
-        # Update semantic types
-        print("\nUpdating Semantic Types:")
-        stats = processor.update_semantic_types_from_constants()
         
-        # Verify all relationships
-        processor.verify_hierarchy_relationships()
 
         # Add labels to existing concepts
         processor.add_concept_labels()
 
         # Create clinical relationships
-        processor.create_clinical_relationships()
+        # processor.create_clinical_relationships()
 
         
         # Verify final state

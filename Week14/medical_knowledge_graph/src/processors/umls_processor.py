@@ -9,7 +9,7 @@ from typing import List, Dict, Set
 import logging
 from datetime import datetime
 from src.processors.base_processor import BaseProcessor, DatabaseMixin
-from src.config.constants import IMPORTANT_RELATIONS, USMLE_DOMAINS, IMPORTANT_SEMANTIC_TYPE, SEMANTIC_TYPE_TO_LABEL, RELATION_TYPE_MAPPING, SEMANTIC_GROUPS, HIER_TYPE_MAPPING
+from src.config.constants import IMPORTANT_RELATIONS, USMLE_DOMAINS, IMPORTANT_SEMANTIC_TYPE, SEMANTIC_TYPE_TO_LABEL, RELATION_TYPE_MAPPING,  HIER_TYPE_MAPPING
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 from neo4j.exceptions import ServiceUnavailable, SessionExpired
 
@@ -184,10 +184,7 @@ class UMLSProcessor(BaseProcessor, DatabaseMixin):
                 
                 # Process remaining files in parallel
                 futures = {
-                    'relationships': executor.submit(
-                        self.process_mrrel, 
-                        data['mrrel']
-                    ),
+       
                     'semantic_types': executor.submit(
                         self.process_mrsty, 
                         data['mrsty']
@@ -196,10 +193,10 @@ class UMLSProcessor(BaseProcessor, DatabaseMixin):
                         self._process_mrdef_parallel, 
                         data['mrdef']
                     ),
-                    'hierarchies': executor.submit(
-                        self.process_mrhier,
-                        data['mrhier']
-                    )
+                    'relationships': executor.submit(
+                        self.process_mrrel, 
+                        data['mrrel']
+                    ),
                 }
                 
                 # Collect results
@@ -220,9 +217,9 @@ class UMLSProcessor(BaseProcessor, DatabaseMixin):
             print(f"Definitions: {results.get('definitions', 0):,}")
             print(f"Hierarchical Relationships: {results.get('hierarchies', 0):,}")
             
-            # Verify hierarchical relationships
-            print("\nVerifying hierarchical relationships...")
-            self.verify_hierarchy_relationships()
+            # # Verify hierarchical relationships
+            # print("\nVerifying hierarchical relationships...")
+            # self.verify_hierarchy_relationships()
             
         except Exception as e:
             logger.error(f"Error in dataset processing: {str(e)}")
@@ -426,82 +423,54 @@ class UMLSProcessor(BaseProcessor, DatabaseMixin):
             raise
 
     def _create_relationships_batch(self, batch: List[Dict]):
-        """Create specific clinical relationships from MRREL"""
+        """Create specific clinical relationships with correct directions"""
         try:
             cypher = """
             UNWIND $batch as item
             MATCH (c1:Concept {cui: item.cui1})
             MATCH (c2:Concept {cui: item.cui2})
-            WITH c1, c2, item,
-            CASE 
-                // Basic clinical relationships
-                WHEN item.rel_attr = 'treats' THEN $rel_mapping['treats']
-                WHEN item.rel_attr = 'may_be_treated_by' THEN $rel_mapping['may_be_treated_by']
-                WHEN item.rel_attr = 'has_causative_agent' THEN $rel_mapping['has_causative_agent']
-                WHEN item.rel_attr = 'associated_with' THEN $rel_mapping['associated_with']
-                WHEN item.rel_attr = 'gene_associated_with_disease' THEN $rel_mapping['gene_associated_with_disease']
-                WHEN item.rel_attr = 'related_to' THEN $rel_mapping['related_to']
-                
-                // Disease relationships
-                WHEN item.rel_attr = 'may_treat' THEN $rel_mapping['may_treat']
-                WHEN item.rel_attr = 'may_prevent' THEN $rel_mapping['may_prevent']
-                WHEN item.rel_attr = 'disease_has_finding' THEN $rel_mapping['disease_has_finding']
-                WHEN item.rel_attr = 'associated_finding_of' THEN $rel_mapping['associated_finding_of']
-                WHEN item.rel_attr = 'clinical_course_of' THEN $rel_mapping['clinical_course_of']
-                WHEN item.rel_attr = 'manifestation_of' THEN $rel_mapping['manifestation_of']
-                WHEN item.rel_attr = 'is_finding_of_disease' THEN $rel_mapping['is_finding_of_disease']
-                WHEN item.rel_attr = 'is_not_finding_of_disease' THEN $rel_mapping['is_not_finding_of_disease']
-                
-                // Drug relationships
-                WHEN item.rel_attr = 'has_ingredient' THEN $rel_mapping['has_ingredient']
-                WHEN item.rel_attr = 'has_precise_ingredient' THEN $rel_mapping['has_precise_ingredient']
-                WHEN item.rel_attr = 'chemical_or_drug_affects_gene_product' THEN $rel_mapping['chemical_or_drug_affects_gene_product']
-                WHEN item.rel_attr = 'contraindicated_with_disease' THEN $rel_mapping['contraindicated_with_disease']
-                WHEN item.rel_attr = 'has_mechanism_of_action' THEN $rel_mapping['has_mechanism_of_action']
-                WHEN item.rel_attr = 'contraindicated_mechanism_of_action_of' THEN $rel_mapping['contraindicated_mechanism_of_action_of']
-                WHEN item.rel_attr = 'mechanism_of_action_of' THEN $rel_mapping['mechanism_of_action_of']
-                WHEN item.rel_attr = 'chemical_or_drug_has_mechanism_of_action' THEN $rel_mapping['chemical_or_drug_has_mechanism_of_action']
-                
-                // Anatomical relationships
-                WHEN item.rel_attr = 'occurs_in' THEN $rel_mapping['occurs_in']
-                WHEN item.rel_attr = 'location_of' THEN $rel_mapping['location_of']
-                WHEN item.rel_attr = 'is_location_of_biological_process' THEN $rel_mapping['is_location_of_biological_process']
-                WHEN item.rel_attr = 'has_location' THEN $rel_mapping['has_location']
-                WHEN item.rel_attr = 'is_location_of_anatomic_structure' THEN $rel_mapping['is_location_of_anatomic_structure']
-                WHEN item.rel_attr = 'part_of' THEN $rel_mapping['part_of']
-                WHEN item.rel_attr = 'drains_into' THEN $rel_mapping['drains_into']
-                
-                // Process relationships
-                WHEN item.rel_attr = 'occurs_before' THEN $rel_mapping['occurs_before']
-                WHEN item.rel_attr = 'regulates' THEN $rel_mapping['regulates']
-                WHEN item.rel_attr = 'negatively_regulates' THEN $rel_mapping['negatively_regulates']
-                WHEN item.rel_attr = 'positively_regulates' THEN $rel_mapping['positively_regulates']
-                
-                // Diagnostic relationships
-                WHEN item.rel_attr = 'may_be_diagnosed_by' THEN $rel_mapping['may_be_diagnosed_by']
-                WHEN item.rel_attr = 'may_be_finding_of_disease' THEN $rel_mapping['may_be_finding_of_disease']
-                WHEN item.rel_attr = 'associated_etiologic_finding_of' THEN $rel_mapping['associated_etiologic_finding_of']
-                WHEN item.rel_attr = 'disease_has_finding' THEN $rel_mapping['disease_has_finding']
-                WHEN item.rel_attr = 'disease_may_have_finding' THEN $rel_mapping['disease_may_have_finding']
-                WHEN item.rel_attr = 'is_finding_of_disease' THEN $rel_mapping['is_finding_of_disease']
-                WHEN item.rel_attr = 'associated_finding_of' THEN $rel_mapping['associated_finding_of']
-                
-                // Clinical progression
-                WHEN item.rel_attr = 'has_course' THEN $rel_mapping['has_course']
-                WHEN item.rel_attr = 'develops_into' THEN $rel_mapping['develops_into']
-                WHEN item.rel_attr = 'cause_of' THEN $rel_mapping['cause_of']
-                
-                // Treatment priority
-                WHEN item.rel_attr = 'disease_has_accepted_treatment_with_regimen' 
-                    THEN $rel_mapping['disease_has_accepted_treatment_with_regimen']
-                
-                ELSE null  // Skip unknown relationships
-            END as relationship_type
-            WITH c1, c2, item, relationship_type
-            WHERE relationship_type IS NOT NULL  // Only process known relationships
+            WITH c1, c2, item
+            CALL apoc.do.case(
+                [
+                    item.rel_attr IN ['may_treat', 'may_prevent',
+                        'is_finding_of_disease', 'associated_finding_of',
+                        'may_be_finding_of_disease', 'associated_etiologic_finding_of',
+                        'is_not_finding_of_disease', 'clinical_course_of',
+                        'manifestation_of', 'location_of',
+                        'is_location_of_biological_process',
+                        'is_location_of_anatomic_structure',
+                        'mechanism_of_action_of',
+                        'contraindicated_mechanism_of_action_of',
+                        'cause_of'],
+                    "RETURN {type: $rel_mapping[item.rel_attr], reverse: true} AS rel_info",
+                    
+                    item.rel_attr IN ['may_be_treated_by',
+                        'disease_has_accepted_treatment_with_regimen',
+                        'disease_has_finding', 'disease_may_have_finding',
+                        'has_causative_agent', 'occurs_in', 'has_location',
+                        'has_ingredient', 'has_precise_ingredient',
+                        'has_mechanism_of_action',
+                        'chemical_or_drug_has_mechanism_of_action',
+                        'chemical_or_drug_affects_gene_product',
+                        'contraindicated_with_disease', 'occurs_before',
+                        'regulates', 'negatively_regulates',
+                        'positively_regulates', 'develops_into',
+                        'has_course', 'part_of', 'drains_into',
+                        'may_be_diagnosed_by'],
+                    "RETURN {type: $rel_mapping[item.rel_attr], reverse: false} AS rel_info",
+                    
+                    item.rel_attr IN ['associated_with',
+                        'related_to', 'gene_associated_with_disease'],
+                    "RETURN {type: $rel_mapping[item.rel_attr], reverse: false} AS rel_info"
+                ],
+                "RETURN {type: $rel_mapping[item.rel_attr], reverse: false} AS rel_info",  // elseQuery as a string
+                {c1: c1, c2: c2, item: item, rel_mapping: $rel_mapping}  // parameters
+            ) YIELD value
+            WITH c1, c2, item, value.rel_info AS rel_info
+            WHERE rel_info.type IS NOT NULL
             CALL apoc.merge.relationship(
-                c1,
-                relationship_type,
+                CASE WHEN rel_info.reverse THEN c2 ELSE c1 END,
+                rel_info.type,
                 {
                     source: item.source,
                     rel_attr: item.rel_attr,
@@ -509,7 +478,7 @@ class UMLSProcessor(BaseProcessor, DatabaseMixin):
                     created_at: item.created_at
                 },
                 {},
-                c2
+                CASE WHEN rel_info.reverse THEN c1 ELSE c2 END
             )
             YIELD rel
             RETURN count(rel) as created
@@ -520,11 +489,6 @@ class UMLSProcessor(BaseProcessor, DatabaseMixin):
                 'rel_mapping': RELATION_TYPE_MAPPING
             })
             created = result[0]['created'] if result else 0
-            
-            # Log skipped relationships (optional)
-            if created < len(batch):
-                skipped = len(batch) - created
-                logger.info(f"Skipped {skipped} unknown relationships")
             
             return created
             
@@ -590,12 +554,18 @@ class UMLSProcessor(BaseProcessor, DatabaseMixin):
             if (cui in self.processed_concepts and 
                 semantic_type_id in self.important_semantic_types):
                 
+                category = 'priority_1' if semantic_type_id in IMPORTANT_SEMANTIC_TYPE['priority_1'] else 'priority_2'
+                
                 return {
-                    'cui': cui,
-                    'semantic_type_id': semantic_type_id,
+                    'cui': cui,                  # Concept CUI
+                    'type_id': semantic_type_id, # Aligned with new naming
                     'semantic_type': self.important_semantic_types[semantic_type_id],
-                    'tree_number': row[2],  # STN
-                    'name': row[3],         # STY
+                    'name': row[3],             # STY
+                    'tree_number': row[2],      # STN
+                    'category': category,
+                    'source': 'UMLS',
+                    'status': 'active',
+                    'version': '2024.1',
                     'created_at': time.strftime('%Y-%m-%d %H:%M:%S')
                 }
             return None
@@ -607,13 +577,19 @@ class UMLSProcessor(BaseProcessor, DatabaseMixin):
     def _create_semantic_types_batch(self, batch: List[Dict]):
         """Create semantic type nodes and relationships in Neo4j"""
         try:
-            # First create semantic type nodes
+            # First create semantic type nodes with all fields
             cypher_nodes = """
             UNWIND $batch as item
-            MERGE (st:SemanticType {type_id: item.semantic_type_id})
+            MERGE (st:SemanticType {type_id: item.type_id})
             ON CREATE SET 
-                st.name = item.semantic_type,
+                st.semantic_type = item.semantic_type,
+                st.name = item.name,
                 st.tree_number = item.tree_number,
+                st.category = item.category,
+                st.source = item.source,
+                st.status = item.status,
+                st.description = item.description,
+                st.version = item.version,
                 st.created_at = item.created_at
             """
             self.graph.query(cypher_nodes, {'batch': batch})
@@ -622,12 +598,13 @@ class UMLSProcessor(BaseProcessor, DatabaseMixin):
             cypher_rels = """
             UNWIND $batch as item
             MATCH (c:Concept {cui: item.cui})
-            MATCH (st:SemanticType {type_id: item.semantic_type_id})
+            MATCH (st:SemanticType {type_id: item.type_id})
             MERGE (c)-[r:HAS_SEMANTIC_TYPE]->(st)
             ON CREATE SET 
-                r.created_at = item.created_at
+                r.created_at = item.created_at,
+                r.source = item.source
             SET c.semantic_type = item.semantic_type,
-                c.semantic_type_id = item.semantic_type_id
+                c.semantic_type_id = item.type_id
             """
             self.graph.query(cypher_rels, {'batch': batch})
             
@@ -802,11 +779,9 @@ class UMLSProcessor(BaseProcessor, DatabaseMixin):
             """
             result = self.graph.query(cypher, {'cui': cui})
             return [dict(record) for record in result]
-            
         except Exception as e:
-            logger.error(f"Error getting concept definitions: {str(e)}")
-            return []
-
+            logger.error(f"Error in processing: {str(e)}")
+            raise
     def get_definition_stats(self) -> Dict:
         """Get statistics about definitions"""
         try:
@@ -1058,54 +1033,6 @@ class UMLSProcessor(BaseProcessor, DatabaseMixin):
             logger.error(f"Error retrieving synonyms for CUI {cui}: {str(e)}")
             return []
 
-    def process_new_additions(self):
-        """Process only newly added concepts, relationships, and semantic types using parallel processing"""
-        try:
-            print(f"\n=== Starting Parallel Processing (CPUs: {self.num_workers}) ===")
-            start_time = time.time()
-
-            with ThreadPoolExecutor(max_workers=self.num_workers) as executor:
-                # Process new concepts first
-                concepts_future = executor.submit(self._process_new_concepts_parallel)
-                new_concepts_added = concepts_future.result()
-                print(f"✓ Added {new_concepts_added:,} new concepts")
-
-                # Reload existing data to include new concepts
-                self._load_existing_data()
-
-                # Process relationships and semantic types in parallel
-                futures = {
-                    'relationships': executor.submit(self._process_new_relationships_parallel),
-                    'semantic_types': executor.submit(self._process_new_semantic_types_parallel)
-                }
-
-                # Collect results
-                results = {}
-                for name, future in futures.items():
-                    try:
-                        results[name] = future.result()
-                    except Exception as e:
-                        logger.error(f"Error in {name} processing: {str(e)}")
-                        results[name] = 0
-
-            total_time = time.time() - start_time
-            print(f"\n=== Processing Complete ({total_time:.1f}s) ===")
-            print(f"New Concepts: {new_concepts_added:,}")
-            print(f"New Relationships: {results.get('relationships', 0):,}")
-            print(f"New Semantic Types: {results.get('semantic_types', 0):,}")
-
-            # Return processing statistics
-            return {
-                'new_concepts': new_concepts_added,
-                'new_relationships': results.get('relationships', 0),
-                'new_semantic_types': results.get('semantic_types', 0),
-                'processing_time': total_time
-            }
-
-        except Exception as e:
-            logger.error(f"Error in parallel processing: {str(e)}")
-            raise
-
     def _process_new_concepts_parallel(self):
         """Process and load new concepts using parallel processing"""
         try:
@@ -1166,114 +1093,6 @@ class UMLSProcessor(BaseProcessor, DatabaseMixin):
             logger.error(f"Error loading concepts batch: {str(e)}")
             raise
 
-    def _process_new_relationships_parallel(self):
-        """Process and load new relationships using parallel processing"""
-        try:
-            # Identify new relationships to be added
-            new_rels = []
-            for rel_type, [source_domain, target_domain] in IMPORTANT_RELATIONS.items():
-                # Check if this relationship type exists between domains
-                if (rel_type, source_domain, target_domain) not in self.existing_relationships:
-                    new_rels.append({
-                        'rel_type': rel_type,
-                        'source_domain': source_domain,
-                        'target_domain': target_domain
-                    })
-
-            processed = 0
-            if new_rels:
-                with ThreadPoolExecutor(max_workers=self.num_workers) as executor:
-                    futures = [
-                        executor.submit(self._load_relationship, rel)
-                        for rel in new_rels
-                    ]
-                    
-                    for future in futures:
-                        processed += future.result()
-                        progress = processed / len(new_rels) * 100
-                        print(f"\rLoading new relationships: {progress:.1f}% complete | {processed} loaded", end='')
-
-            print(f"\nCompleted loading {processed} new relationships")
-            return processed
-
-        except Exception as e:
-            logger.error(f"Error in parallel relationship processing and loading: {str(e)}")
-            raise
-
-    def _load_relationship(self, rel):
-        """Load a new relationship into Neo4j"""
-        try:
-            cypher = f"""
-            MATCH (source:Concept)
-            WHERE source.code STARTS WITH $source_domain
-            MATCH (target:Concept)
-            WHERE target.code STARTS WITH $target_domain
-            WITH source, target
-            WHERE NOT (source)-[:{rel['rel_type']}]->(target)
-            MERGE (source)-[r:{rel['rel_type']}]->(target)
-            ON CREATE SET r.created_at = datetime()
-            RETURN count(r) as created
-            """
-            result = self.graph.query(cypher, {
-                'source_domain': rel['source_domain'],
-                'target_domain': rel['target_domain']
-            })
-            return result[0]['created'] if result else 0
-        except Exception as e:
-            logger.error(f"Error loading relationship: {str(e)}")
-            raise
-
-    def _process_new_semantic_types_parallel(self):
-        """Process and load new semantic types using parallel processing"""
-        try:
-            # Identify new semantic type mappings
-            new_mappings = []
-            for category, codes in IMPORTANT_SEMANTIC_TYPE.items():
-                for code in codes:
-                    if (code, category) not in self.existing_semantic_types:
-                        new_mappings.append({
-                            'code': code,
-                            'category': category
-                        })
-
-            processed = 0
-            if new_mappings:
-                with ThreadPoolExecutor(max_workers=self.num_workers) as executor:
-                    futures = [
-                        executor.submit(self._load_semantic_type, mapping)
-                        for mapping in new_mappings
-                    ]
-                    
-                    for future in futures:
-                        processed += future.result()
-                        progress = processed / len(new_mappings) * 100
-                        print(f"\rLoading new semantic types: {progress:.1f}% complete | {processed} loaded", end='')
-
-            print(f"\nCompleted loading {processed} new semantic type mappings")
-            return processed
-
-        except Exception as e:
-            logger.error(f"Error in parallel semantic type processing and loading: {str(e)}")
-            raise
-
-    def _load_semantic_type(self, mapping):
-        """Load a new semantic type mapping into Neo4j"""
-        try:
-            cypher = """
-            MATCH (c:Concept {code: $code})
-            MERGE (s:SemanticType {category: $category})
-            WITH c, s
-            WHERE NOT (c)-[:HAS_SEMANTIC_TYPE]->(s)
-            MERGE (c)-[r:HAS_SEMANTIC_TYPE]->(s)
-            ON CREATE SET r.created_at = datetime()
-            RETURN count(r) as created
-            """
-            result = self.graph.query(cypher, mapping)
-            return result[0]['created'] if result else 0
-        except Exception as e:
-            logger.error(f"Error loading semantic type: {str(e)}")
-            raise
-
     def get_processing_stats(self):
         """Get statistics about the processed data"""
         try:
@@ -1306,7 +1125,7 @@ class UMLSProcessor(BaseProcessor, DatabaseMixin):
                 count(DISTINCT c) as concept_count
             ORDER BY concept_count DESC
             """
-            stats['semantic_types'] = self.graph.query(cypher_sem)
+            stats['semantic_type'] = self.graph.query(cypher_sem)
             
             return stats
             
@@ -1314,72 +1133,7 @@ class UMLSProcessor(BaseProcessor, DatabaseMixin):
             logger.error(f"Error getting processing stats: {str(e)}")
             raise
 
-    def update_semantic_types_from_constants(self):
-        """Update existing semantic type nodes using IMPORTANT_SEMANTIC_TYPE mapping"""
-        try:
-            print("\n=== Updating Semantic Type Nodes from Constants ===")
-            
-            # Combine priority 1 and 2 semantic types
-            semantic_type_mapping = {
-                **IMPORTANT_SEMANTIC_TYPE['priority_1'],
-                **IMPORTANT_SEMANTIC_TYPE['priority_2']
-            }
-            
-            print(f"Found {len(semantic_type_mapping)} semantic types in constants")
-            
-            # First, update SemanticType nodes
-            cypher_update_nodes = """
-            UNWIND $mapping as item
-            MATCH (st:SemanticType)
-            WHERE st.name = item.semantic_type
-            SET 
-                st.type_id = item.type_id,
-                st.semantic_type = item.semantic_type,
-                st.cui = 'ST_' + item.type_id,
-                st.updated_at = datetime()
-            """
-            
-            # Prepare the mapping batch
-            mapping_batch = [
-                {
-                    'type_id': type_id,
-                    'semantic_type': semantic_type
-                }
-                for type_id, semantic_type in semantic_type_mapping.items()
-            ]
-            
-            print(f"Prepared {len(mapping_batch)} items for update")
-            
-            # Update nodes
-            self.graph.query(cypher_update_nodes, {'mapping': mapping_batch})
-            
-            # Then update relationships and concepts
-            cypher_update_rels = """
-            MATCH (c:Concept)-[r:HAS_SEMANTIC_TYPE]->(st:SemanticType)
-            WHERE st.type_id IS NOT NULL
-            SET 
-                c.semantic_type = st.semantic_type,
-                c.semantic_type_id = st.type_id,
-                r.updated_at = datetime()
-            """
-            self.graph.query(cypher_update_rels)
-            
-            # Update any remaining SemanticType nodes without CUI
-            cypher_update_remaining = """
-            MATCH (st:SemanticType)
-            WHERE st.cui IS NULL AND st.type_id IS NOT NULL
-            SET st.cui = 'ST_' + st.type_id
-            """
-            self.graph.query(cypher_update_remaining)
-            
-            # Verify updates
-            verification = self._verify_semantic_type_updates()
-            
-            return verification
-
-        except Exception as e:
-            logger.error(f"Error updating semantic types from constants: {str(e)}")
-            raise
+    
 
     def _verify_semantic_type_updates(self):
         """Verify semantic type updates"""
@@ -1501,227 +1255,87 @@ class UMLSProcessor(BaseProcessor, DatabaseMixin):
             logger.error(f"Error adding concept labels: {str(e)}")
             raise
 
-    def create_clinical_relationships(self):
-        """Create clinical relationships between concepts using MRREL"""
-        try:
-            print("\nCreating clinical relationships...")
+   
+    # def verify_concepts_exist(self, cuis: List[str]) -> Dict:
+    #     """Verify if concepts exist and return missing ones"""
+    #     try:
+    #         cypher = """
+    #         UNWIND $cuis as cui
+    #         OPTIONAL MATCH (c:Concept {cui: cui})
+    #         RETURN cui, 
+    #                CASE WHEN c IS NULL THEN false ELSE true END as exists
+    #         """
             
-            cypher = """
-            MATCH (c1:Concept)-[r:RELATES_TO]->(c2:Concept)
-            WHERE r.rel_type IN keys($rel_mapping)
-            WITH c1, c2, r, $rel_mapping[r.rel_type] as new_type
-            CALL apoc.merge.relationship(c1, new_type, 
-                {
-                    source: r.source,
-                    created_at: datetime()
-                },
-                {},
-                c2
-            )
-            YIELD rel
-            RETURN COUNT(rel) as new_relationships
-            """
+    #         results = self.graph.query(cypher, {'cuis': cuis})
+    #         existing = []
+    #         missing = []
             
-            result = self.graph.query(cypher, {
-                'rel_mapping': RELATION_TYPE_MAPPING
-            })
-            
-            print(f"Created {result[0]['new_relationships']} clinical relationships")
-            
-            # Verify relationships
-            verification_cypher = """
-            MATCH ()-[r]->()
-            WHERE type(r) IN $rel_types
-            RETURN type(r) as rel_type, count(*) as count
-            ORDER BY count DESC
-            """
-            
-            all_types = list(RELATION_TYPE_MAPPING.values()) + list(HIER_TYPE_MAPPING.values())
-            verification_result = self.graph.query(verification_cypher, {
-                'rel_types': all_types
-            })
-            
-            print("\nRelationship types in database:")
-            for row in verification_result:
-                print(f"{row['rel_type']}: {row['count']:,}")
-            
-        except Exception as e:
-            logger.error(f"Error creating clinical relationships: {str(e)}")
-            raise
-
-    def _determine_relationship_type(self, tree_number: str) -> str:
-        """Determine relationship type based on MeSH tree number prefix"""
-        if not tree_number:
-            return 'IS_A'
-        
-        prefix = tree_number.split('.')[0]  # Get first part of tree number
-        
-        # MeSH Tree Categories
-        mesh_mappings = {
-            'A': 'PART_OF',        # Anatomy
-            'B': 'IS_TYPE_OF',     # Organisms
-            'C': 'IS_A',           # Diseases
-            'D': 'IS_A',           # Chemicals and Drugs
-            'E': 'IS_A',           # Analytical, Diagnostic and Therapeutic Techniques and Equipment
-            'F': 'OCCURS_WITH',    # Psychiatry and Psychology
-            'G': 'RELATED_TO',     # Phenomena and Processes
-            'H': 'BROADER_THAN',   # Disciplines and Occupations
-            'I': 'RELATED_TO',     # Anthropology, Education, Sociology and Social Phenomena
-            'J': 'RELATED_TO',     # Technology, Industry, Agriculture
-            'K': 'BROADER_THAN',   # Humanities
-            'L': 'RELATED_TO',     # Information Science
-            'M': 'RELATED_TO',     # Named Groups
-            'N': 'RELATED_TO',     # Health Care
-            'V': 'RELATED_TO',     # Publication Characteristics
-            'Z': 'RELATED_TO'      # Geographicals
-        }
-        
-        return mesh_mappings.get(prefix[0], 'IS_A')
-
-    def process_mrhier(self, file_path: str) -> int:
-        """Process MRHIER file to create hierarchical relationships"""
-        try:
-            processed = 0
-            skipped = 0
-            print(f"\nProcessing MRHIER file: {file_path}")
-            
-            chunks = pd.read_csv(
-                file_path,
-                sep='|',
-                header=None,
-                chunksize=self.batch_size,
-                encoding='utf-8',
-                na_filter=False
-            )
-            
-            for chunk in chunks:
-                batch = []
-                for _, row in chunk.iterrows():
-                    try:
-                        cui = row[0]
-                        current_aui = row[1]
-                        source = row[4]
-                        path = row[6]
-                        tree_number = row[7]
-                        
-                        if path and '.' in path:
-                            path_elements = path.split('.')
-                            
-                            # Get the parent AUI without using index
-                            if len(path_elements) > 1:
-                                # Take the last two elements, current should be the last one
-                                last_elements = path_elements[-2:]  # Get last two elements
-                                if current_aui == last_elements[-1]:
-                                    parent_aui = last_elements[0]
-                                else:
-                                    # If current AUI isn't the last, try to find it and get its parent
-                                    try:
-                                        current_index = path_elements.index(current_aui)
-                                        if current_index > 0:
-                                            parent_aui = path_elements[current_index - 1]
-                                        else:
-                                            continue
-                                    except ValueError:
-                                        skipped += 1
-                                        continue
-                                
-                                if cui in self.processed_concepts:
-                                    batch.append({
-                                        'cui': cui,
-                                        'current_aui': current_aui,
-                                        'parent_aui': parent_aui,
-                                        'source': source,
-                                        'tree_number': tree_number,
-                                        'path': path,
-                                        'created_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-                                    })
-                    except Exception as e:
-                        logger.warning(f"Skipping MRHIER row due to error: {str(e)}")
-                        skipped += 1
-                        continue
+    #         for record in results:
+    #             if record['exists']:
+    #                 existing.append(record['cui'])
+    #             else:
+    #                 missing.append(record['cui'])
                 
-                if batch:
-                    self._create_hierarchy_relationships_batch(batch)
-                    processed += len(batch)
-                    print(f"\rProcessed {processed:,} hierarchical relationships | Skipped {skipped:,}", end='')
+    #         return {
+    #             'existing': existing,
+    #             'missing': missing,
+    #             'total_checked': len(cuis),
+    #             'total_existing': len(existing),
+    #             'total_missing': len(missing)
+    #         }
             
-            print(f"\nCompleted MRHIER processing:")
-            print(f"- Processed: {processed:,} relationships")
-            print(f"- Skipped: {skipped:,} rows")
-            return processed
-            
-        except Exception as e:
-            logger.error(f"Error processing MRHIER: {str(e)}")
-            raise
+    #     except Exception as e:
+    #         logger.error(f"Error verifying concepts: {str(e)}")
+    #         raise
 
-    def _create_hierarchy_relationships_batch(self, batch: List[Dict]):
-        """Create hierarchical relationships from MRHIER"""
-        try:
-            cypher = """
-            UNWIND $batch as item
-            MATCH (c1:Concept {cui: item.cui})
-            MATCH (c2:Concept) 
-            WHERE c2.aui = item.parent_aui
-            WITH c1, c2, item,
-            CASE left(item.tree_number, 1)
-                WHEN 'A' THEN 'PART_OF'
-                WHEN 'B' THEN 'IS_TYPE_OF'
-                WHEN 'F' THEN 'OCCURS_WITH'
-                WHEN 'H' THEN 'BROADER_THAN'
-                WHEN 'K' THEN 'BROADER_THAN'
-                ELSE 'IS_A'
-            END as relationship_type
-            CALL apoc.merge.relationship(
-                c1,
-                relationship_type,
-                {
-                    source: item.source,
-                    tree_number: item.tree_number,
-                    path: item.path,
-                    created_at: item.created_at
-                },
-                {},
-                c2
-            )
-            YIELD rel
-            RETURN count(rel) as created
-            """
+    # def create_missing_concepts(self, mrconso_file: str, cuis: List[str]):
+    #     """Create missing concepts from MRCONSO file"""
+    #     try:
+    #         # Read MRCONSO for the specific CUIs
+    #         chunks = pd.read_csv(
+    #             mrconso_file,
+    #             sep='|',
+    #             header=None,
+    #             chunksize=self.batch_size,
+    #             encoding='utf-8'
+    #         )
             
-            result = self.graph.query(cypher, {'batch': batch})
-            created = result[0]['created'] if result else 0
-            return created
+    #         concepts_to_create = []
+    #         for chunk in chunks:
+    #             relevant_rows = chunk[
+    #                 (chunk[0].isin(cuis)) &  # CUI
+    #                 (chunk[1] == 'ENG')      # English only
+    #             ]
+                
+    #             for _, row in relevant_rows.iterrows():
+    #                 concepts_to_create.append({
+    #                     'cui': row[0],
+    #                     'term': row[14],    # STR
+    #                     'source': row[11],   # SAB
+    #                     'domain': self.usmle_domains.get(row[11], {}).get(row[12], 'unknown'),
+    #                     'created_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    #                 })
             
-        except Exception as e:
-            logger.error(f"Error creating hierarchy relationships batch: {str(e)}")
-            raise
+    #         if concepts_to_create:
+    #             cypher = """
+    #             UNWIND $batch as item
+    #             MERGE (c:Concept {cui: item.cui})
+    #             ON CREATE SET 
+    #                 c.term = item.term,
+    #                 c.source = item.source,
+    #                 c.domain = item.domain,
+    #                 c.created_at = item.created_at
+    #             """
+                
+    #             self.graph.query(cypher, {'batch': concepts_to_create})
+    #             logger.info(f"Created {len(concepts_to_create)} new concepts")
+                
+    #         return len(concepts_to_create)
+            
+    #     except Exception as e:
+    #         logger.error(f"Error creating missing concepts: {str(e)}")
+    #         raise
 
-    def verify_hierarchy_relationships(self):
-        """Verify all hierarchical relationships"""
-        try:
-            cypher = """
-            MATCH ()-[r]->()
-            WHERE type(r) IN $hier_types
-            RETURN 
-                type(r) as rel_type,
-                count(r) as total_rels,
-                count(DISTINCT startNode(r)) as source_concepts,
-                count(DISTINCT endNode(r)) as target_concepts
-            """
-            
-            results = self.graph.query(cypher, {
-                'hier_types': list(HIER_TYPE_MAPPING.values())
-            })
-            
-            print("\nHierarchy Relationship Statistics:")
-            for row in results:
-                print(f"\nType: {row['rel_type']}")
-                print(f"Total relationships: {row['total_rels']:,}")
-                print(f"Source concepts: {row['source_concepts']:,}")
-                print(f"Target concepts: {row['target_concepts']:,}")
-            
-        except Exception as e:
-            logger.error(f"Error verifying hierarchy relationships: {str(e)}")
-            raise
 
     def diagnose_missing_relationships(self, mrrel_file: str):
         """Optimized function to diagnose missing concepts with retry logic"""
@@ -1747,6 +1361,7 @@ class UMLSProcessor(BaseProcessor, DatabaseMixin):
             for chunk in chunks:
                 # Use the mapped relationship types
                 relevant_rows = chunk[chunk[7].isin(target_relations)]
+
                 total_rows += len(relevant_rows)
                 
                 for _, row in relevant_rows.iterrows():
@@ -1908,32 +1523,34 @@ class UMLSProcessor(BaseProcessor, DatabaseMixin):
         try:
             logger.info("Starting creation of missing concepts and relationships...")
             
-            # First, clean up any existing duplicate relationships
+            # Single cleanup operation at the start
             deleted_count = self.cleanup_duplicate_relationships()
             logger.info(f"Cleaned up {deleted_count} duplicate relationships")
             
-            # Rest of your existing function...
-            # [Previous implementation continues here...]
-            missing_data = self.diagnose_missing_relationships(mrrel_file)
-            if not missing_data:
-                logger.info("No missing data found.")
+            # Get initial relationship count and capacity
+            count_query = "MATCH ()-[r]->() RETURN count(r) as count"
+            current_count = self._execute_query_with_retry(count_query)[0]['count']
+            remaining_capacity = 400000 - current_count  # Neo4j Free tier limit
+            
+            if remaining_capacity <= 0:
+                logger.warning("No remaining relationship capacity")
                 return {
                     'concepts_created': 0,
                     'relationships_created': 0,
-                    'duplicates_removed': False
+                    'duplicates_removed': deleted_count > 0
                 }
-                
-            missing_cuis = set(missing_data.get('missing_cuis', []))
             
-            if not missing_cuis:
+            # Process missing concepts and relationships
+            missing_data = self.diagnose_missing_relationships(mrrel_file)
+            if not missing_data or not missing_data.get('missing_cuis'):
                 logger.info("No missing concepts found.")
                 return {
                     'concepts_created': 0,
                     'relationships_created': 0,
-                    'duplicates_removed': False
+                    'duplicates_removed': deleted_count > 0
                 }
-            
-            logger.info(f"Processing {len(missing_cuis)} missing concepts...")
+                
+            missing_cuis = set(missing_data.get('missing_cuis', []))
             
             # Read concept data from MRCONSO for missing CUIs
             concepts_data = {}
@@ -1982,7 +1599,7 @@ class UMLSProcessor(BaseProcessor, DatabaseMixin):
             
             # Create concepts in batches
             concept_batches = [list(concepts_data.values())[i:i + 1000] 
-                             for i in range(0, len(concepts_data), 1000)]
+                            for i in range(0, len(concepts_data), 1000)]
             
             created_concepts = 0
             for batch_num, concept_batch in enumerate(concept_batches, 1):
@@ -2014,53 +1631,88 @@ class UMLSProcessor(BaseProcessor, DatabaseMixin):
             
             logger.info(f"Created {created_concepts} concepts")
             
-            # First, clean up any existing duplicate relationships
-            logger.info("Cleaning up duplicate relationships...")
-            cleanup_cypher = """
-            MATCH (n)-[r]->(m)
-            WITH n, m, type(r) as relType, collect(r) as rels
-            WHERE size(rels) > 1
-            FOREACH (r in tail(rels) | DELETE r)
-            """
-            self._execute_query_with_retry(cleanup_cypher)
-            
-            # Create relationships for newly created concepts with duplicate prevention
+            # Create relationships with proper directionality
             relationship_count = 0
             for rel_type, data in missing_data['analysis'].items():
-                if data['missing_pairs']:
-                    # Check current relationship count
-                    count_query = "MATCH ()-[r]->() RETURN count(r) as count"
-                    current_count = self._execute_query_with_retry(count_query)[0]['count']
-                    
-                    remaining_capacity = 400000 - current_count  # Neo4j Free tier limit
-                    if remaining_capacity <= 0:
-                        logger.warning("Relationship limit reached. Stopping relationship creation.")
-                        break
-                    
-                    # Process relationships in smaller batches
+                if data['missing_pairs'] and relationship_count < remaining_capacity:
                     pairs_batch = [
                         {
                             'cui1': pair['cui1'],
                             'cui2': pair['cui2'],
                             'rel_type': rel_type,
+                            'rel_attr': pair.get('rel_attr', ''),
+                            'source': pair.get('source', ''),
                             'created_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
                         }
                         for pair in data['missing_pairs']
                     ]
                     
-                    # Process in smaller batches to avoid hitting the limit
-                    batch_size = min(100, remaining_capacity)  # Process max 100 at a time
+                    batch_size = min(100, remaining_capacity - relationship_count)
+                    
                     for i in range(0, len(pairs_batch), batch_size):
+                        if relationship_count >= remaining_capacity:
+                            break
+                            
                         current_batch = pairs_batch[i:i + batch_size]
-                        
                         try:
                             cypher = """
                             UNWIND $batch as item
                             MATCH (c1:Concept {cui: item.cui1})
                             MATCH (c2:Concept {cui: item.cui2})
-                            MERGE (c1)-[r:$rel_type]->(c2)
-                            ON CREATE SET r.created_at = item.created_at
-                            RETURN count(r) as created
+                            WITH c1, c2, item
+                            CALL apoc.do.case([
+                                // Reverse direction relationships (c2->c1)
+                                item.rel_attr IN ['may_treat', 'may_prevent',
+                                    'is_finding_of_disease', 'associated_finding_of',
+                                    'may_be_finding_of_disease', 'associated_etiologic_finding_of',
+                                    'is_not_finding_of_disease', 'clinical_course_of',
+                                    'manifestation_of', 'location_of',
+                                    'is_location_of_biological_process',
+                                    'is_location_of_anatomic_structure',
+                                    'mechanism_of_action_of',
+                                    'contraindicated_mechanism_of_action_of',
+                                    'cause_of'],
+                                "MERGE (c2)-[r:$rel_type]->(c1) 
+                                ON CREATE SET r += $props 
+                                RETURN r",
+                                
+                                // Forward direction relationships (c1->c2)
+                                item.rel_attr IN ['may_be_treated_by',
+                                    'disease_has_accepted_treatment_with_regimen',
+                                    'disease_has_finding', 'disease_may_have_finding',
+                                    'has_causative_agent', 'occurs_in', 'has_location',
+                                    'has_ingredient', 'has_precise_ingredient',
+                                    'has_mechanism_of_action',
+                                    'chemical_or_drug_has_mechanism_of_action',
+                                    'chemical_or_drug_affects_gene_product',
+                                    'contraindicated_with_disease', 'occurs_before',
+                                    'regulates', 'negatively_regulates',
+                                    'positively_regulates', 'develops_into',
+                                    'has_course', 'part_of', 'drains_into',
+                                    'may_be_diagnosed_by'],
+                                "MERGE (c1)-[r:$rel_type]->(c2) 
+                                ON CREATE SET r += $props 
+                                RETURN r",
+                                
+                                // Bidirectional/symmetric relationships
+                                item.rel_attr IN ['associated_with',
+                                    'related_to', 'gene_associated_with_disease'],
+                                "MERGE (c1)-[r:$rel_type]->(c2) 
+                                ON CREATE SET r += $props 
+                                RETURN r"
+                            ],
+                            "MERGE (c1)-[r:$rel_type]->(c2) 
+                            ON CREATE SET r += $props 
+                            RETURN r",
+                            {
+                                rel_type: item.rel_type,
+                                props: {
+                                    source: item.source,
+                                    rel_attr: item.rel_attr,
+                                    created_at: item.created_at
+                                }
+                            }) YIELD value
+                            RETURN count(value) as created
                             """
                             
                             result = self._execute_query_with_retry(cypher, {
@@ -2073,25 +1725,17 @@ class UMLSProcessor(BaseProcessor, DatabaseMixin):
                                 relationship_count += created
                                 logger.info(f"Created {created} relationships of type {rel_type}")
                                 
-                                # Check if we're approaching the limit
-                                if relationship_count >= remaining_capacity:
-                                    logger.warning("Approaching relationship limit. Stopping creation.")
-                                    break
-                                    
                         except Exception as e:
                             if "exceeded the logical size limit" in str(e):
-                                logger.warning("Relationship limit reached during batch processing.")
+                                logger.warning("Relationship limit reached")
                                 break
                             else:
                                 logger.error(f"Error creating relationships batch: {str(e)}")
-                    
-                    if relationship_count >= remaining_capacity:
-                        break
             
             return {
                 'concepts_created': created_concepts,
                 'relationships_created': relationship_count,
-                'duplicates_removed': True
+                'duplicates_removed': deleted_count > 0
             }
             
         except Exception as e:
