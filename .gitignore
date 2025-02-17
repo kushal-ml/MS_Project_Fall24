@@ -22,3 +22,9 @@ Week14/medical_knowledge_graph/data/processed/*
 # Keep directory structure
 !Week14/medical_knowledge_graph/data/raw/umls/.gitkeep
 !Week14/medical_knowledge_graph/data/processed/.gitkeep
+
+# Virtual Environment
+venv/
+env/
+.env/
+.venv/
