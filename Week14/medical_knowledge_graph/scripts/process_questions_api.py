@@ -187,7 +187,7 @@ class MedicalQuestionProcessorAPI:
                       seen_relationships.add(rel_key)
 
           prompt = f"""
-          Answer this medical question using both the provided UMLS data and your medical knowledge.
+          Answer this medical question using ONLY the provided UMLS data. Do not use any of your previousmedical knowledge.
           
           Question: {question}
 

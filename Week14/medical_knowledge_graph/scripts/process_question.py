@@ -89,18 +89,20 @@ import sys
 from pathlib import Path
 import os
 from typing import Dict, List, Any
+import json
 
 # Add the project root directory to Python path
 root_dir = str(Path(__file__).parent.parent)
 sys.path.append(root_dir)
 
 from dotenv import load_dotenv
-from langchain_community.graphs import Neo4jGraph
+# from langchain_community.graphs import Neo4jGraph
+from langchain_neo4j import Neo4jGraph
 from openai import OpenAI  # Use OpenAI's official client instead
 import logging
 from src.processors.umls_processor import UMLSProcessor
 from src.processors.question_processor import QuestionProcessor
-
+from notebooks.query_breakdown import PICOFormatter
 # Set up logging
 logging.basicConfig(
     level=logging.INFO,
@@ -112,6 +114,7 @@ class MedicalQuestionProcessor:
     def __init__(self, graph: Neo4jGraph, llm_function):
         self.graph = graph
         self.llm = llm_function
+        #self.pico_formatter = PICOFormatter(llm=llm_function)
         logger.info("Medical Question Processor initialized")
         
         # Define UMLS schema and question types
@@ -167,6 +170,8 @@ class MedicalQuestionProcessor:
         Properties:
         - cui: Concept Unique Identifier
         - term: Preferred term
+        - text: Definition
+        - semantic_type: Semantic type
         - source: Source vocabulary
         - domain: Medical domain
         - created_at: Timestamp
@@ -370,7 +375,7 @@ class MedicalQuestionProcessor:
     def process_medical_question(self, question: str) -> Dict[str, Any]:
         """Process a medical question using Neo4j knowledge graph"""
         try:
-            # Extract key terms using LLM
+            # Extract key terms using PICO format
             key_terms = self._extract_key_terms(question)
             logger.info(f"Extracted terms: {key_terms}")
             
@@ -395,44 +400,113 @@ class MedicalQuestionProcessor:
             logger.error(f"Error processing question: {str(e)}")
             return {'error': str(e)}
 
-    def _extract_key_terms(self, question: str) -> List[str]:
-        """Extract key medical terms from the question using LLM"""
+    def _extract_key_terms(self, question: str) -> List[Dict]:
+        """Extract key medical terms and categorize them by node types"""
         prompt = f"""
-        Extract key medical terms from this question:
-        {question}
-        Return only the medical terms as a comma-separated list.
+        Extract and categorize medical terms from this question based on these node types:
+        - Anatomy: anatomical structures and locations
+        - Disease: medical conditions and disorders
+        - Drug: medications and therapeutic substances
+        - Procedure: medical procedures and interventions
+        - Symptom: clinical findings and manifestations
+        - ClinicalScenario: patient context and clinical situations
+        
+        Question: {question}
+        
+        Return as a JSON list with format:
+        [
+            {{
+                "term": "term_name",
+                "type": "node_type",
+                "priority": 1-3 (1=highest)
+            }}
+        ]
+        
+        Rules:
+        1. Assign priority 1 to main conditions/drugs in question
+        2. Priority 2 to symptoms/findings
+        3. Priority 3 to contextual information
+        4. Only include relevant medical terms
+        5. Categorize each term into exactly one node type
         """
+        
         response = self.llm(prompt)
-        return [term.strip() for term in response.split(',')]
+        try:
+            terms = json.loads(response)
+            logger.info(f"Extracted terms: {terms}")
+            return terms
+        except:
+            logger.error(f"Failed to parse LLM response: {response}")
+            return []
 
-    def _get_concepts(self, terms: List[str]) -> List[Dict]:
-        """Get concept information from Neo4j with correct property names"""
+    def _get_concepts(self, terms: List[Dict]) -> List[Dict]:
+        """Get concept information from Neo4j based on node types"""
         try:
             concepts = []
-            for term in terms:
-                # Updated query with correct property names
-                query = """
-                MATCH (c)
-                WHERE (c:Disease OR c:Drug OR c:Symptom OR c:Anatomy OR c:Concept)
-                AND (
-                    toLower(c.term) CONTAINS toLower($term)
-                    OR any(syn IN c.synonyms WHERE toLower(syn) CONTAINS toLower($term))
-                )
-                OPTIONAL MATCH (c)-[:HAS_DEFINITION]->(d:Definition)
-                OPTIONAL MATCH (c)-[:HAS_SEMANTIC_TYPE]->(s:SemanticType)
-                RETURN 
-                    c.cui as cui,
-                    c.term as name,
-                    d.text as definition,
-                    labels(c) as types,
-                    s.semantic_type as semantic_type,
-                    c.source as source
-                LIMIT 5
-                """
-                results = self.graph.query(query, {'term': term})
-                concepts.extend(results)
+            
+            # Define label mapping for different term types
+            label_mapping = {
+                'Disease': ['Disease'],
+                'Drug': ['Drug', 'Chemical'],
+                'Symptom': ['Symptom', 'Finding'],
+                'Anatomy': ['Anatomy'],
+                'Procedure': ['Procedure'],
+                'ClinicalScenario': ['ClinicalScenario']
+            }
+            
+            # Process terms by priority
+            for priority in [1, 2, 3]:
+                priority_terms = [t for t in terms if t.get('priority', 3) == priority]
                 
-            logger.info(f"Found {len(concepts)} concepts for terms: {terms}")
+                for term_info in priority_terms:
+                    term = term_info['term']
+                    term_type = term_info['type']
+                    
+                    # Get appropriate labels for the term type
+                    labels = label_mapping.get(term_type, ['Concept'])
+                    
+                    query = """
+                    MATCH (c)
+                    WHERE any(label IN $labels WHERE label IN labels(c))
+                    AND (
+                        toLower(c.term) CONTAINS toLower($term)
+                        OR any(syn IN c.synonyms WHERE toLower(syn) CONTAINS toLower($term))
+                    )
+                    WITH c
+                    OPTIONAL MATCH (c)-[:HAS_DEFINITION]->(d:Definition)
+                    WITH c, d
+                    ORDER BY 
+                        CASE 
+                            WHEN toLower(c.term) = toLower($term) THEN 0
+                            WHEN toLower(c.term) STARTS WITH toLower($term) THEN 1
+                            WHEN toLower(c.term) CONTAINS toLower($term) THEN 2
+                            ELSE 3 
+                        END,
+                        CASE WHEN d.source = 'UMLS' THEN 0 ELSE 1 END
+                    LIMIT 2
+                    RETURN DISTINCT
+                        c.cui as cui,
+                        c.term as term,
+                        d.text as definition,
+                        labels(c) as types,
+                        $term_type as node_type,
+                        $priority as priority
+                    """
+                    
+                    results = self.graph.query(
+                        query,
+                        {
+                            'term': term,
+                            'labels': labels,
+                            'term_type': term_type,
+                            'priority': priority
+                        }
+                    )
+                    
+                    if results:
+                        concepts.extend(results)
+            
+            logger.info(f"Found {len(concepts)} concepts")
             return concepts
             
         except Exception as e:
@@ -440,42 +514,69 @@ class MedicalQuestionProcessor:
             return []
 
     def _get_relationships(self, concepts: List[Dict]) -> List[Dict]:
-        """Get relationships between concepts with correct property names"""
+        """Get relationships between concepts based on node types"""
         try:
-            relationships = []
-            cuis = [concept['cui'] for concept in concepts if 'cui' in concept]
-            
-            if not cuis:
+            if not concepts:
                 return []
                 
-            # Updated relationship query with semantic type relationship
+            # Get CUIs from found concepts
+            cuis = [concept['cui'] for concept in concepts if 'cui' in concept]
+            
+            # Define relationship types based on node types
+            relationship_types = {
+                'Disease': [
+                    'MAY_TREAT', 'MAY_PREVENT', 'DISEASE_HAS_FINDING',
+                    'HAS_CAUSATIVE_AGENT', 'OCCURS_IN'
+                ],
+                'Drug': [
+                    'MAY_TREAT', 'MAY_PREVENT', 'HAS_MECHANISM_OF_ACTION',
+                    'CONTRAINDICATED_WITH_DISEASE', 'HAS_INGREDIENT'
+                ],
+                'Symptom': [
+                    'IS_FINDING_OF_DISEASE', 'ASSOCIATED_FINDING_OF',
+                    'MANIFESTATION_OF'
+                ],
+                'Anatomy': [
+                    'HAS_LOCATION', 'LOCATION_OF', 'PART_OF'
+                ]
+            }
+            
+            # Get all relevant relationship types
+            all_rel_types = []
+            for concept in concepts:
+                node_type = concept.get('node_type')
+                if node_type in relationship_types:
+                    all_rel_types.extend(relationship_types[node_type])
+            
             query = """
-            MATCH (c1)-[r]-(c2)
+            MATCH (c1)-[r]->(target)
             WHERE c1.cui IN $cuis
-            AND type(r) IN [
-                'ASSOCIATED_WITH', 'CAUSE_OF', 'CHEMICAL_OR_DRUG_AFFECTS_GENE_PRODUCT',
-                'DISEASE_HAS_FINDING', 'DISEASE_MAY_HAVE_FINDING',
-                'HAS_MECHANISM_OF_ACTION', 'MAY_TREAT', 'MAY_PREVENT',
-                'IS_FINDING_OF_DISEASE', 'MANIFESTATION_OF'
-            ]
-            OPTIONAL MATCH (c1)-[:HAS_SEMANTIC_TYPE]->(s1:SemanticType)
-            OPTIONAL MATCH (c2)-[:HAS_SEMANTIC_TYPE]->(s2:SemanticType)
-            RETURN 
+            AND type(r) IN $rel_types
+            WITH c1, r, target
+            WHERE (target.cui IN $cuis OR type(r) IN $primary_rels)
+            RETURN DISTINCT
                 type(r) as relationship_type,
                 c1.cui as source_cui,
                 c1.term as source_name,
-                c2.cui as target_cui,
-                c2.term as target_name,
-                s1.semantic_type as source_semantic_type,
-                s2.semantic_type as target_semantic_type,
-                r.source as relationship_source
-            ORDER BY type(r)
-            LIMIT 20
+                target.cui as target_cui,
+                target.term as target_name,
+                labels(c1)[0] as source_type,
+                labels(target)[0] as target_type
             """
-            results = self.graph.query(query, {'cuis': cuis})
-            relationships.extend(results)
             
-            return relationships
+            results = self.graph.query(
+                query,
+                {
+                    'cuis': cuis,
+                    'rel_types': list(set(all_rel_types)),
+                    'primary_rels': [
+                        'MAY_TREAT', 'MAY_PREVENT', 'HAS_MECHANISM_OF_ACTION',
+                        'DISEASE_HAS_FINDING', 'IS_FINDING_OF_DISEASE'
+                    ]
+                }
+            )
+            
+            return results
             
         except Exception as e:
             logger.error(f"Error getting relationships from Neo4j: {str(e)}")
@@ -485,41 +586,46 @@ class MedicalQuestionProcessor:
         """Generate answer using knowledge graph data to enhance LLM response"""
         try:
             # Format relevant knowledge graph data as context
-            context = "Medical Knowledge Graph Context:\n\n"
+            context = "Medical Knowledge Graph Data:\n\n"
             
-            # Add relevant concepts with definitions
-            context += "Related Medical Concepts:\n"
-            for concept in concepts[:5]:
-                context += f"\n• {concept.get('name')} (CUI: {concept.get('cui')})"
-                if concept.get('definition'):
-                    context += f"\n  Definition: {concept.get('definition')}"
-                if concept.get('semantic_type'):
-                    context += f"\n  Type: {concept.get('semantic_type')}"
+            # Add relevant concepts with definitions (only key ones)
+            context += "Key Medical Concepts:\n"
+            for concept in concepts[:5]:  # Limit to top 5 most relevant concepts
+                if concept.get('term') and concept.get('definition'):
+                    context += f"\n• {concept.get('term')} (CUI: {concept.get('cui')})"
+                    context += f"\n  Definition: {concept.get('definition')[:150]}..."  # Truncate long definitions
             
-            # Add relevant relationships
-            context += "\n\nKnown Medical Relationships:\n"
-            seen = set()
-            for rel in relationships[:10]:
-                rel_key = f"{rel.get('source_name')} -> {rel.get('relationship_type')} -> {rel.get('target_name')}"
-                if rel_key not in seen:
-                    context += f"\n• {rel_key}"
-                    seen.add(rel_key)
+            # Add only the most relevant treatment relationships
+            context += "\n\nKey Treatment Relationships:\n"
+            key_rel_types = ['MAY_TREAT', 'MAY_BE_TREATED_BY', 'HAS_MECHANISM_OF_ACTION']
+            seen_rels = set()
+            
+            for rel in relationships:
+                rel_type = rel.get('relationship_type')
+                if rel_type in key_rel_types:
+                    rel_key = f"{rel.get('source_name')} -> {rel_type} -> {rel.get('target_name')}"
+                    if rel_key not in seen_rels:
+                        context += f"\n• {rel_key}"
+                        seen_rels.add(rel_key)
+                        if len(seen_rels) >= 10:  # Limit to top 10 most relevant relationships
+                            break
 
-            prompt = f"""You are a medical expert with access to a medical knowledge graph. 
-            Use the following knowledge graph data to help inform your answer, but you can also 
-            use your medical knowledge to provide a complete response.
+            prompt = f"""You are a medical expert. Answer this question comprehensively using the provided knowledge graph data.
+            Focus on the most relevant information and explain your reasoning.
 
             Question: {question}
 
             {context}
 
-            Please provide a comprehensive answer that:
-            1. Uses the knowledge graph data where relevant
-            2. Cites specific concepts (with CUIs) when referencing graph data
-            3. Adds medical context and explanations as needed
-            4. Clearly distinguishes between graph-based and general medical knowledge
+            Please provide a detailed answer that:
+            1. Directly addresses the question
+            2. Explains the rationale for the recommended treatment
+            3. Mentions relevant mechanisms of action
+            4. References specific concepts using their CUIs
+            5. Notes any important considerations or contraindications
+            6. Acknowledges if any crucial information is missing
 
-            Answer the question in a clear, professional manner."""
+            Format the answer in clear paragraphs with proper medical terminology."""
             
             return self.llm(prompt)
             
@@ -527,16 +633,85 @@ class MedicalQuestionProcessor:
             logger.error(f"Error generating answer: {str(e)}")
             return "Error: Unable to generate answer due to data processing limitations."
 
+    def _validate_response(self, response, evidence_list):
+        """Validate that response only uses provided evidence"""
+        used_cuis = set()
+        for evidence in evidence_list:
+            used_cuis.add(evidence['source_cui'])
+            used_cuis.add(evidence['target_cui'])
+        
+        # Add checks for any external medical terms or claims
+        # that aren't supported by the evidence
+        return {
+            'is_valid': True/False,
+            'unsupported_claims': [],
+            'missing_evidence': []
+        }
+
+    def _format_evidence(self, relationship):
+        """Format relationship evidence with source attribution"""
+        evidence = {
+            'statement': f"{relationship['source_name']} {relationship['relationship_type'].lower().replace('_', ' ')} {relationship['target_name']}",
+            'source': relationship['relationship_source'],
+            'confidence': relationship.get('relationship_confidence'),
+            'year': relationship.get('relationship_year'),
+            'source_cui': relationship['source_cui'],
+            'target_cui': relationship['target_cui']
+        }
+        return evidence
+
+    def _generate_response(self, relationships, question):
+        """Generate response with evidence tracking"""
+        evidence_list = []
+        for rel in relationships:
+            evidence = self._format_evidence(rel)
+            evidence_list.append(evidence)
+        
+        response = {
+            'answer': self._construct_answer(evidence_list, question),
+            'evidence': evidence_list
+        }
+        return response
+
+    def _construct_answer(self, evidence_list, question):
+        """Construct answer using only knowledge graph evidence"""
+        prompt = f"""
+        Based ONLY on the following evidence from the knowledge graph, answer the question.
+        Do not include any external knowledge not present in these relationships.
+        If you cannot answer the question completely with the given evidence, explicitly state what information is missing.
+
+        Question: {question}
+
+        Available Evidence:
+        {json.dumps(evidence_list, indent=2)}
+
+        Format your response as:
+        1. Answer (using only the above evidence)
+        2. Missing Information (what additional knowledge graph relationships would help answer the question more completely)
+        3. Evidence Used (list the specific relationships used)
+        """
+        # Call LLM with the prompt
+        return self.llm(prompt)
+
 def main():
     try:
         load_dotenv()
         
-        # Initialize connections
+        # Initialize Neo4j connection with correct protocol
         graph = Neo4jGraph(
             url=os.getenv("NEO4J_URI"),
             username=os.getenv("NEO4J_USERNAME"),
-            password=os.getenv("NEO4J_PASSWORD")
+            password=os.getenv("NEO4J_PASSWORD"),
+            database="neo4j"  # Specify the database name
         )
+        
+        try:
+            # Test the connection
+            result = graph.query("RETURN 1 as test")
+            logger.info("Successfully connected to Neo4j database")
+        except Exception as e:
+            logger.error(f"Failed to connect to Neo4j: {str(e)}")
+            raise
         
         # Initialize OpenAI client
         client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
@@ -563,7 +738,6 @@ def main():
             if 'error' in result:
                 print(f"\nError: {result['error']}")
             else:
-                # Display answer in a structured format
                 print("\n" + "="*50)
                 print("MEDICAL QUESTION ANALYSIS")
                 print("="*50)
@@ -574,31 +748,51 @@ def main():
                 
                 print("\nANSWER:")
                 print("-"*50)
-                answer_parts = result['answer'].split('\n')
-                for part in answer_parts:
-                    print(part)
+                print(result['answer'])
                 
                 print("\nRELEVANT CONCEPTS:")
                 print("-"*50)
-                for concept in result['concepts'][:5]:  # Limit to top 5 concepts
-                    print(f"\nConcept: {concept.get('name')}")
-                    print(f"CUI: {concept.get('cui')}")
-                    if concept.get('definition'):
-                        print(f"Definition: {concept.get('definition')[:100]}...")
-                    print(f"Type: {', '.join(concept.get('types', []))}")
+                # Filter duplicate concepts and show only unique ones
+                seen_cuis = set()
+                for concept in result['concepts']:
+                    if concept.get('cui') not in seen_cuis:
+                        print(f"\nConcept: {concept.get('term')}")
+                        print(f"CUI: {concept.get('cui')}")
+                        if concept.get('definition'):
+                            print(f"Definition: {concept.get('definition')[:100]}...")
+                        print(f"Type: {', '.join(concept.get('types', []))}")
+                        seen_cuis.add(concept.get('cui'))
                 
                 print("\nKEY RELATIONSHIPS:")
                 print("-"*50)
+                # Filter relationships to show only treatment and direct disease relationships
+                relevant_relationship_types = {
+                    'MAY_TREAT',
+                    'MAY_BE_TREATED_BY',
+                    'CONTRAINDICATED_WITH_DISEASE',
+                    'HAS_MECHANISM_OF_ACTION',
+                    'CHEMICAL_OR_DRUG_HAS_MECHANISM_OF_ACTION'
+                }
+                
+                # Get all unique terms mentioned in the question
+                question_terms = {concept['term'].lower() for concept in result['concepts']}
+                
                 seen_relationships = set()
-                count = 0
                 for rel in result['relationships']:
-                    if count >= 10:  # Limit to top 10 relationships
-                        break
-                    rel_key = f"{rel.get('source_name')} -> {rel.get('relationship_type')} -> {rel.get('target_name')}"
-                    if rel_key not in seen_relationships:
-                        print(rel_key)
-                        seen_relationships.add(rel_key)
-                        count += 1
+                    # Only show relationships that:
+                    # 1. Are of relevant types
+                    # 2. Involve concepts mentioned in the question
+                    # 3. Haven't been shown before
+                    rel_type = rel.get('relationship_type')
+                    source_name = rel.get('source_name', '').lower()
+                    target_name = rel.get('target_name', '').lower()
+                    
+                    if (rel_type in relevant_relationship_types and 
+                        (source_name in question_terms or target_name in question_terms)):
+                        rel_key = f"{rel.get('source_name')} -> {rel_type} -> {rel.get('target_name')}"
+                        if rel_key not in seen_relationships:
+                            print(rel_key)
+                            seen_relationships.add(rel_key)
                 
                 print("\n" + "="*50)
                 
