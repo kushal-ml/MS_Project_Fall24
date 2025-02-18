@@ -1,5 +1,6 @@
 # Environment variables
 .env
+venv/
 
 # UMLS Data Files
 Week14/medical_knowledge_graph/data/raw/umls/*.RRF
@@ -18,6 +19,8 @@ Week14/medical_knowledge_graph/data/processed/*
 **/__pycache__/
 *.py[cod]
 *$py.class
+*.dylib
+*.so
 
 # Keep directory structure
 !Week14/medical_knowledge_graph/data/raw/umls/.gitkeep
