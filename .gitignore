@@ -1,7 +1,11 @@
 # Environment variables
-.env
-.venv
+.env/
+venv/
+.venv/
+env/
 
+#API file
+.env
 
 # UMLS Data Files
 Week14/medical_knowledge_graph/data/raw/umls/*.RRF
@@ -24,4 +28,14 @@ Week14/medical_knowledge_graph/data/processed/*
 # Keep directory structure
 !Week14/medical_knowledge_graph/data/raw/umls/.gitkeep
 !Week14/medical_knowledge_graph/data/processed/.gitkeep
+
+# Distribution / packaging
+dist/
+build/
+*.egg-info/
+
+# IDE
+.idea/
+.vscode/
+*.swp
 

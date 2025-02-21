@@ -6,6 +6,7 @@ import logging
 from dotenv import load_dotenv
 from openai import OpenAI
 from pathlib import Path
+import json
 # Get the absolute path to the project root
 project_root = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(project_root))
@@ -77,149 +78,184 @@ class MedicalQuestionProcessorAPI:
             logger.error(f"Error processing question: {str(e)}")
             return {'error': str(e)}
 
-    async def _extract_key_terms(self, question: str) -> List[str]:
+    async def _extract_key_terms(self, question: str) -> List[Dict]:
         """Extract key medical terms from the question using LLM"""
         prompt = f"""
-        Given this medical question, extract the key medical terms (diseases, symptoms, treatments, etc.):
+        Extract and categorize medical terms from this question based on these node types:
+        - Disease: medical conditions and disorders
+        - Drug: medications and therapeutic substances
+        - Procedure: medical procedures and interventions
+        - Symptom: clinical findings, lab values, and manifestations
+        - Anatomy: anatomical structures and locations
         
         Question: {question}
         
-        Return only the key terms as a comma-separated list.
+        Return ONLY a JSON array of objects with this format:
+        [
+            {{"term": "term_name", "type": "node_type", "priority": 1-3}}
+        ]
+        
+        Rules:
+        1. Priority 1 for main conditions/diseases
+        2. Priority 2 for symptoms/findings
+        3. Priority 3 for procedures/context
+        4. Only include relevant medical terms
+        5. Do not include any markdown formatting or backticks
         """
         
-        response = self.llm(prompt)
-        terms = [term.strip() for term in response.split(',')]
-        return terms
+        try:
+            response = self.llm(prompt)
+            
+            # Clean the response - remove backticks and "json" text
+            cleaned_response = response.replace('```json', '').replace('```', '').strip()
+            
+            # Parse the cleaned JSON
+            terms = json.loads(cleaned_response)
+            logger.info(f"Successfully extracted {len(terms)} terms")
+            
+            # Extract just the term names for UMLS search
+            term_names = [term['term'] for term in terms]
+            return term_names
+            
+        except json.JSONDecodeError as e:
+            logger.error(f"Failed to parse LLM response: {response}")
+            logger.error(f"JSON Error: {str(e)}")
+            return []
+        except Exception as e:
+            logger.error(f"Unexpected error in term extraction: {str(e)}")
+            return []
 
     async def _get_concept_relationships(self, concept_info: Dict) -> List[Dict]:
         """Get relationships between identified concepts"""
         relationships = []
         
         # Get CUIs from concept info
-        cuis = []
-        for results in concept_info.values():
+        concept_cuis = {}  # Store CUI to concept name mapping
+        for term, results in concept_info.items():
             for result in results:
-                if 'basic_info' in result and 'ui' in result['basic_info']:
-                    cuis.append(result['basic_info']['ui'])
-        
+                if 'basic_info' in result:
+                    cui = result['basic_info'].get('ui')
+                    name = result['basic_info'].get('name')
+                    if cui and name:
+                        concept_cuis[cui] = name
+
         # Get relationships for each CUI
-        for cui in cuis:
+        for cui, name in concept_cuis.items():
             rels = await self.umls_api.get_concept_relationships(cui)
-            relationships.extend(rels)
+            for rel in rels:
+                if rel.get('relatedId') in concept_cuis:  # Only include relationships between found concepts
+                    relationships.append({
+                        'sourceUi': cui,
+                        'sourceName': name,
+                        'relationLabel': rel.get('relationLabel'),
+                        'relatedId': rel.get('relatedId'),
+                        'relatedName': concept_cuis[rel.get('relatedId')]
+                    })
         
         return relationships
 
-    # async def _generate_answer(self, question: str, concepts: Dict, relationships: List) -> str:
-    #   """Generate answer using LLM based on UMLS data"""
-    #   # Format UMLS data more explicitly
-    #   umls_context = "UMLS Knowledge:\n"
-      
-    #   # Add concept definitions from UMLS
-    #   for term, results in concepts.items():
-    #       for result in results:
-    #           if 'basic_info' in result and 'definitions' in result:
-    #               umls_context += f"\nConcept: {result['basic_info'].get('name', '')}\n"
-    #               umls_context += f"CUI: {result['basic_info'].get('ui', '')}\n"
-    #               if result['definitions']:
-    #                   umls_context += f"Definition: {result['definitions'][0].get('value', '')}\n"
-    #               if result['semantic_types']:
-    #                   umls_context += f"Semantic Type: {result['semantic_types'][0].get('name', '')}\n"
+    def _select_best_definition(self, definitions: List[Dict]) -> str:
+        """
+        Select the best English definition from pre-filtered English definitions.
+        """
+        if not definitions:
+            return "No definition available."
 
-    #   # Add relationships from UMLS
-    #   umls_context += "\nRelationships from UMLS:\n"
-    #   for rel in relationships:
-    #       if 'relationship_type' in rel and 'related_concept' in rel:
-    #           rel_type = rel['relationship_type']
-    #           related = rel['related_concept']
-    #           umls_context += f"- {rel_type}: {related.get('name', '')}\n"
+        # Print all available definitions
+        print("\nAvailable English Definitions:")
+        for i, d in enumerate(definitions, 1):
+            print(f"\nDefinition {i}:")
+            print(f"Value: {d.get('value', '')}")
+            print(f"Source: {d.get('rootSource', 'Unknown')}")
 
-    #   prompt = f"""
-    #   Based ONLY on the following UMLS (Unified Medical Language System) data, answer the medical question.
-    #   Do not use any other medical knowledge that you may have. Use only the information provided from UMLS:
+        # Prioritize sources in this order
+        preferred_sources = ['NCI', 'MSH', 'SNOMEDCT_US', 'MTH', 'CSP']
+        
+        # Try to find definition from preferred sources
+        for source in preferred_sources:
+            for definition in definitions:
+                if definition.get('rootSource') == source:
+                    selected_def = definition.get('value', '')
+                    print(f"\nSelected Definition (from {source}):")
+                    print(selected_def)
+                    return selected_def
 
-    #   Question: {question}
-
-    #   {umls_context}
-
-    #   Please provide:
-    #   1. A direct answer using only the UMLS data above
-    #   2. Supporting evidence citing specific UMLS concepts and relationships
-    #   3. Medical context derived only from the UMLS definitions and relationships provided
-
-    #   If the UMLS data is insufficient to answer any part, state that explicitly.
-    #   """
-      
-    #   return self.llm(prompt)
+        # If no preferred source found, return the first available definition
+        selected_def = definitions[0].get('value', '')
+        print("\nSelected Definition (first available):")
+        print(selected_def)
+        return selected_def
 
     async def _generate_answer(self, question: str, concepts: Dict, relationships: List) -> str:
-      """Generate answer using both UMLS data and LLM knowledge"""
-      try:
-          # Format UMLS data concisely
-          umls_data = "UMLS Knowledge Base:\n"
-          
-          # Add relevant UMLS concepts
-          for term, results in list(concepts.items())[:3]:
-              for result in results[:1]:
-                  if 'basic_info' in result:
-                      cui = result['basic_info'].get('ui', '')
-                      name = result['basic_info'].get('name', '')
-                      umls_data += f"\nConcept: {name} (CUI: {cui})\n"
-                      
-                      if result.get('definitions'):
-                          definition = result['definitions'][0].get('value', '')[:200]
-                          umls_data += f"Definition: {definition}...\n"
-                      
-                      if result.get('semantic_types'):
-                          sem_type = result['semantic_types'][0].get('name', '')
-                          umls_data += f"Type: {sem_type}\n"
-          
-          # Add key relationships
-          umls_data += "\nUMLS Relationships:\n"
-          seen_relationships = set()
-          for rel in relationships[:10]:
-              if 'relationship_type' in rel and 'related_concept' in rel:
-                  rel_type = rel['relationship_type']
-                  related = rel['related_concept']
-                  rel_key = f"{rel_type}:{related.get('name', '')}"
-                  
-                  if rel_key not in seen_relationships:
-                      umls_data += f"- {rel_type}: {related.get('name', '')} (CUI: {related.get('cui', '')})\n"
-                      seen_relationships.add(rel_key)
+        """Generate answer using both UMLS data and LLM knowledge"""
+        try:
+            # Format UMLS data with more detail
+            umls_data = "UMLS Knowledge Base:\n\n"
+            
+            # Add concepts with best definitions
+            umls_data += "Concepts and Definitions:\n"
+            for term, results in concepts.items():
+                for result in results:
+                    if 'basic_info' in result:
+                        cui = result['basic_info'].get('ui', '')
+                        name = result['basic_info'].get('name', '')
+                        umls_data += f"\n• {name} (CUI: {cui})"
+                        
+                        # Add the best definition
+                        if result.get('definitions'):
+                            best_definition = self._select_best_definition(result['definitions'])
+                            if best_definition:
+                                umls_data += f"\n  Definition: {best_definition}"
+                        
+                        # Add semantic types
+                        if result.get('semantic_types'):
+                            sem_types = [st.get('name', '') for st in result['semantic_types']]
+                            umls_data += f"\n  Semantic Types: {', '.join(sem_types)}"
+            
+            # Add relationships with more detail
+            umls_data += "\n\nRelationships between Concepts:\n"
+            seen_relationships = set()
+            for rel in relationships:
+                if 'relationLabel' in rel and 'relatedId' in rel:
+                    source_cui = rel.get('sourceUi', '')
+                    target_cui = rel.get('relatedId', '')
+                    rel_type = rel.get('relationLabel', '')
+                    source_name = rel.get('sourceName', '')
+                    target_name = rel.get('relatedName', '')
+                    
+                    rel_key = f"{source_cui}:{rel_type}:{target_cui}"
+                    if rel_key not in seen_relationships:
+                        umls_data += f"\n• {source_name} (CUI: {source_cui}) -> {rel_type} -> {target_name} (CUI: {target_cui})"
+                        seen_relationships.add(rel_key)
 
-          prompt = f"""
-          Answer this medical question using ONLY the provided UMLS data. Do not use any of your previousmedical knowledge.
-          
-          Question: {question}
+            prompt = f"""
+            Answer this medical question using ONLY the provided UMLS data. Do not use any of your previous medical knowledge.
+            
+            Question: {question}
 
-          {umls_data}
+            {umls_data}
 
-          Provide your answer in this format:
-          1. Answer and Explanation:
-            - State the correct option
-            - Explain using both UMLS data and medical knowledge
-            - Clearly distinguish between UMLS-sourced information and additional medical context
-          
-          2. UMLS Evidence:
-            - Cite relevant UMLS concepts (with CUIs) that support the answer
-            - List any relevant UMLS relationships
-            - State what information is specifically from UMLS
-          
-          3. Additional Medical Context:
-            - Provide additional medical reasoning not found in UMLS
-            - Explain how this complements the UMLS data
-            - Note any important medical context that helps understand the answer
-          
-          Remember to:
-          - Clearly distinguish between UMLS data and additional medical knowledge
-          - Use UMLS data to validate your medical knowledge where possible
-          - Be explicit when making connections beyond UMLS data
-          """
-          
-          return self.llm(prompt)
-          
-      except Exception as e:
-          logger.error(f"Error generating answer: {str(e)}")
-          return "Error: Unable to generate answer due to data processing limitations."
+            Provide your answer in this format:
+            1. Answer and Explanation:
+                - State the correct option
+                - Explain using ONLY the UMLS data provided above
+                - Cite specific CUIs and relationships
+            
+            2. UMLS Evidence Used:
+                - List all relevant concepts with their CUIs
+                - List all relevant relationships
+                - Explicitly state what information comes from UMLS
+            
+            3. Missing Information:
+                - State what additional UMLS data would be helpful
+            """
+            
+            return self.llm(prompt)
+            
+        except Exception as e:
+            logger.error(f"Error generating answer: {str(e)}")
+            return "Error: Unable to generate answer due to data processing limitations."
+
     def _format_concepts(self, concepts: Dict) -> str:
         """Format concepts for LLM prompt"""
         formatted = []
@@ -283,13 +319,23 @@ async def main():
                 print("-" * 50)
                 print(", ".join(result['key_terms']))
                 
-                print("\nRelevant Concepts:")
+                print("\nRelevant Concepts and Definitions:")
                 print("-" * 50)
                 for term, concepts in result['concepts'].items():
                     for concept in concepts:
                         if 'basic_info' in concept:
-                            print(f"• {concept['basic_info'].get('name', '')}")
-                            
+                            print(f"\n• {concept['basic_info'].get('name', '')}")
+                            if concept.get('definitions'):
+                                print(f"  Definition: {concept['definitions'][0].get('value', '')}")
+                            if concept.get('semantic_types'):
+                                print(f"  Type: {concept['semantic_types'][0].get('name', '')}")
+                
+                print("\nRelationships:")
+                print("-" * 50)
+                for rel in result['relationships']:
+                    if 'relationLabel' in rel and 'relatedId' in rel:
+                        print(f"• {rel.get('sourceName', '')} -> {rel.get('relationLabel', '')} -> {rel.get('relatedName', '')}")
+                
     except Exception as e:
         logger.error(f"Fatal error: {str(e)}")
         raise

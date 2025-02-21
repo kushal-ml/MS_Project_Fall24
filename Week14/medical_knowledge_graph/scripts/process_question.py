@@ -413,7 +413,7 @@ class MedicalQuestionProcessor:
         
         Question: {question}
         
-        Return as a JSON list with format:
+        Return ONLY a JSON list with format:
         [
             {{
                 "term": "term_name",
@@ -428,15 +428,28 @@ class MedicalQuestionProcessor:
         3. Priority 3 to contextual information
         4. Only include relevant medical terms
         5. Categorize each term into exactly one node type
+        6. Return ONLY the JSON array, no markdown formatting or backticks
         """
         
         response = self.llm(prompt)
         try:
-            terms = json.loads(response)
+            # Clean the response by removing any markdown formatting or backticks
+            cleaned_response = response.strip()
+            if cleaned_response.startswith('```'):
+                cleaned_response = cleaned_response.split('```')[1]
+            if cleaned_response.lower().startswith('json'):
+                cleaned_response = cleaned_response[4:]
+            cleaned_response = cleaned_response.strip()
+            
+            terms = json.loads(cleaned_response)
             logger.info(f"Extracted terms: {terms}")
             return terms
-        except:
+        except json.JSONDecodeError as e:
             logger.error(f"Failed to parse LLM response: {response}")
+            logger.error(f"JSON decode error: {str(e)}")
+            return []
+        except Exception as e:
+            logger.error(f"Unexpected error parsing LLM response: {str(e)}")
             return []
 
     def _get_concepts(self, terms: List[Dict]) -> List[Dict]:
@@ -522,22 +535,34 @@ class MedicalQuestionProcessor:
             # Get CUIs from found concepts
             cuis = [concept['cui'] for concept in concepts if 'cui' in concept]
             
-            # Define relationship types based on node types
+            # Define comprehensive relationship types based on UMLS structure
             relationship_types = {
                 'Disease': [
                     'MAY_TREAT', 'MAY_PREVENT', 'DISEASE_HAS_FINDING',
-                    'HAS_CAUSATIVE_AGENT', 'OCCURS_IN'
+                    'HAS_CAUSATIVE_AGENT', 'OCCURS_IN', 'CAUSES',
+                    'ASSOCIATED_WITH', 'DEVELOPS_INTO', 'HAS_COURSE',
+                    'CLINICAL_COURSE_OF', 'CONTRAINDICATED_WITH_DISEASE'
                 ],
                 'Drug': [
                     'MAY_TREAT', 'MAY_PREVENT', 'HAS_MECHANISM_OF_ACTION',
-                    'CONTRAINDICATED_WITH_DISEASE', 'HAS_INGREDIENT'
+                    'CHEMICAL_OR_DRUG_HAS_MECHANISM_OF_ACTION',
+                    'CONTRAINDICATED_WITH_DISEASE', 'HAS_INGREDIENT',
+                    'HAS_PRECISE_INGREDIENT', 'REGULATES', 
+                    'POSITIVELY_REGULATES', 'NEGATIVELY_REGULATES'
                 ],
                 'Symptom': [
                     'IS_FINDING_OF_DISEASE', 'ASSOCIATED_FINDING_OF',
-                    'MANIFESTATION_OF'
+                    'MANIFESTATION_OF', 'DISEASE_HAS_FINDING',
+                    'DISEASE_MAY_HAVE_FINDING', 'MAY_BE_FINDING_OF_DISEASE'
                 ],
                 'Anatomy': [
-                    'HAS_LOCATION', 'LOCATION_OF', 'PART_OF'
+                    'HAS_LOCATION', 'LOCATION_OF', 'PART_OF',
+                    'DRAINS_INTO', 'IS_LOCATION_OF_ANATOMIC_STRUCTURE',
+                    'IS_LOCATION_OF_BIOLOGICAL_PROCESS', 'OCCURS_IN'
+                ],
+                'SemanticType': [
+                    'IS_A', 'ASSOCIATED_WITH', 'AFFECTS',
+                    'INTERACTS_WITH', 'PROCESS_OF'
                 ]
             }
             
@@ -548,38 +573,35 @@ class MedicalQuestionProcessor:
                 if node_type in relationship_types:
                     all_rel_types.extend(relationship_types[node_type])
             
+            # Add bidirectional relationships
+            all_rel_types = list(set(all_rel_types))
+            
             query = """
-            MATCH (c1)-[r]->(target)
+            MATCH (c1)-[r]-(c2)  // Changed to bidirectional relationship
             WHERE c1.cui IN $cuis
             AND type(r) IN $rel_types
-            WITH c1, r, target
-            WHERE (target.cui IN $cuis OR type(r) IN $primary_rels)
             RETURN DISTINCT
                 type(r) as relationship_type,
                 c1.cui as source_cui,
                 c1.term as source_name,
-                target.cui as target_cui,
-                target.term as target_name,
+                c2.cui as target_cui,
+                c2.term as target_name,
                 labels(c1)[0] as source_type,
-                labels(target)[0] as target_type
+                labels(c2)[0] as target_type
             """
             
             results = self.graph.query(
                 query,
                 {
                     'cuis': cuis,
-                    'rel_types': list(set(all_rel_types)),
-                    'primary_rels': [
-                        'MAY_TREAT', 'MAY_PREVENT', 'HAS_MECHANISM_OF_ACTION',
-                        'DISEASE_HAS_FINDING', 'IS_FINDING_OF_DISEASE'
-                    ]
+                    'rel_types': all_rel_types
                 }
             )
             
             return results
             
         except Exception as e:
-            logger.error(f"Error getting relationships from Neo4j: {str(e)}")
+            logger.error(f"Error getting relationships: {str(e)}")
             return []
 
     def _generate_answer(self, question: str, concepts: List[Dict], relationships: List[Dict]) -> str:
@@ -588,45 +610,47 @@ class MedicalQuestionProcessor:
             # Format relevant knowledge graph data as context
             context = "Medical Knowledge Graph Data:\n\n"
             
-            # Add relevant concepts with definitions (only key ones)
-            context += "Key Medical Concepts:\n"
-            for concept in concepts[:5]:  # Limit to top 5 most relevant concepts
-                if concept.get('term') and concept.get('definition'):
-                    context += f"\n• {concept.get('term')} (CUI: {concept.get('cui')})"
-                    context += f"\n  Definition: {concept.get('definition')[:150]}..."  # Truncate long definitions
+            # Add relevant concepts with definitions
+            context += "Relevant Medical Concepts:\n"
+            for concept in concepts:
+                context += f"\n• {concept.get('term')} (CUI: {concept.get('cui')})"
+                if concept.get('definition'):
+                    context += f"\n  Definition: {concept.get('definition')}"
+                if concept.get('types'):
+                    context += f"\n  Type: {', '.join(concept.get('types'))}"
             
-            # Add only the most relevant treatment relationships
-            context += "\n\nKey Treatment Relationships:\n"
-            key_rel_types = ['MAY_TREAT', 'MAY_BE_TREATED_BY', 'HAS_MECHANISM_OF_ACTION']
-            seen_rels = set()
-            
-            for rel in relationships:
-                rel_type = rel.get('relationship_type')
-                if rel_type in key_rel_types:
-                    rel_key = f"{rel.get('source_name')} -> {rel_type} -> {rel.get('target_name')}"
-                    if rel_key not in seen_rels:
-                        context += f"\n• {rel_key}"
-                        seen_rels.add(rel_key)
-                        if len(seen_rels) >= 10:  # Limit to top 10 most relevant relationships
-                            break
+            # Add treatment relationships first
+            context += "\n\nTreatment Relationships:\n"
+            treatment_rels = [r for r in relationships if r.get('relationship_type') in 
+                            ['MAY_TREAT', 'MAY_BE_TREATED_BY', 'MAY_PREVENT']]
+            for rel in treatment_rels:
+                context += f"\n• {rel.get('source_name')} -> {rel.get('relationship_type')} -> {rel.get('target_name')}"
 
-            prompt = f"""You are a medical expert. Answer this question comprehensively using the provided knowledge graph data.
-            Focus on the most relevant information and explain your reasoning.
+            # Add mechanism relationships
+            context += "\n\nMechanism Relationships:\n"
+            mechanism_rels = [r for r in relationships if r.get('relationship_type') in 
+                            ['HAS_MECHANISM_OF_ACTION', 'CHEMICAL_OR_DRUG_HAS_MECHANISM_OF_ACTION']]
+            for rel in mechanism_rels:
+                context += f"\n• {rel.get('source_name')} -> {rel.get('relationship_type')} -> {rel.get('target_name')}"
+
+            prompt = f"""You are a medical expert. Answer this question using ONLY the provided knowledge graph data. 
+            Do not use external medical knowledge.
 
             Question: {question}
 
             {context}
 
-            Please provide a detailed answer that:
-            1. Directly addresses the question
-            2. Explains the rationale for the recommended treatment
-            3. Mentions relevant mechanisms of action
-            4. References specific concepts using their CUIs
-            5. Notes any important considerations or contraindications
-            6. Acknowledges if any crucial information is missing
+            Provide a comprehensive answer that:
+            1. Pick the correct answer from the list of choices provided
+            2. Addresses the question directly
+            3. Uses only the relationships and concepts shown above
+            4. Cites specific concepts using their CUIs
+            5. Explains any treatment recommendations using the available mechanism data
+            6. States if any crucial information is missing from the knowledge graph
 
-            Format the answer in clear paragraphs with proper medical terminology."""
-            
+            Answer in a clear, professional manner."""
+        
+            logger.info(f"\n\nPrompt: {prompt}\n\n")
             return self.llm(prompt)
             
         except Exception as e:
@@ -720,7 +744,7 @@ def main():
         processor = MedicalQuestionProcessor(
             graph=graph,
             llm_function=lambda x: client.chat.completions.create(
-                model="gpt-4",
+                model="gpt-4o",
                 messages=[{"role": "user", "content": x}]
             ).choices[0].message.content
         )

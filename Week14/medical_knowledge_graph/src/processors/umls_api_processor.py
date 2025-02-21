@@ -31,9 +31,24 @@ class UMLSAPIProcessor:
             for result in search_results[:3]:  # Limit to top 3 matches
                 cui = result.get('ui')
                 if cui:
+                    # Get all information
+                    definitions = await self._get_definitions(cui)
+                    
+                    # Filter for English sources
+                    english_sources = {
+                        'NCI', 'MSH', 'SNOMEDCT_US', 'CSP', 'MTH', 'NIC', 
+                        'NOC', 'NDFRT', 'AOD', 'CHV', 'MEDLINEPLUS', 'HPO'
+                    }
+                    
+                    # Filter definitions by source
+                    english_definitions = [
+                        d for d in definitions 
+                        if d.get('rootSource') in english_sources
+                    ]
+                    
                     concept_info = {
                         'basic_info': result,
-                        'definitions': await self._get_definitions(cui),
+                        'definitions': english_definitions,  # Use filtered definitions
                         'semantic_types': await self._get_semantic_types(cui),
                         'relationships': await self.get_concept_relationships(cui)
                     }
