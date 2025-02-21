@@ -89,22 +89,15 @@ import sys
 from pathlib import Path
 import os
 from typing import Dict, List, Any
-<<<<<<< HEAD
-=======
 import json
->>>>>>> Supprethaa
 
 # Add the project root directory to Python path
 root_dir = str(Path(__file__).parent.parent)
 sys.path.append(root_dir)
 
 from dotenv import load_dotenv
-<<<<<<< HEAD
-from langchain_community.graphs import Neo4jGraph
-=======
 # from langchain_community.graphs import Neo4jGraph
 from langchain_neo4j import Neo4jGraph
->>>>>>> Supprethaa
 from openai import OpenAI  # Use OpenAI's official client instead
 import logging
 from src.processors.umls_processor import UMLSProcessor
@@ -121,10 +114,7 @@ class MedicalQuestionProcessor:
     def __init__(self, graph: Neo4jGraph, llm_function):
         self.graph = graph
         self.llm = llm_function
-<<<<<<< HEAD
-=======
         #self.pico_formatter = PICOFormatter(llm=llm_function)
->>>>>>> Supprethaa
         logger.info("Medical Question Processor initialized")
         
         # Define UMLS schema and question types
@@ -180,11 +170,8 @@ class MedicalQuestionProcessor:
         Properties:
         - cui: Concept Unique Identifier
         - term: Preferred term
-<<<<<<< HEAD
-=======
         - text: Definition
         - semantic_type: Semantic type
->>>>>>> Supprethaa
         - source: Source vocabulary
         - domain: Medical domain
         - created_at: Timestamp
@@ -388,11 +375,7 @@ class MedicalQuestionProcessor:
     def process_medical_question(self, question: str) -> Dict[str, Any]:
         """Process a medical question using Neo4j knowledge graph"""
         try:
-<<<<<<< HEAD
-            # Extract key terms using LLM
-=======
             # Extract key terms using PICO format
->>>>>>> Supprethaa
             key_terms = self._extract_key_terms(question)
             logger.info(f"Extracted terms: {key_terms}")
             
@@ -417,46 +400,6 @@ class MedicalQuestionProcessor:
             logger.error(f"Error processing question: {str(e)}")
             return {'error': str(e)}
 
-<<<<<<< HEAD
-    def _extract_key_terms(self, question: str) -> List[str]:
-        """Extract key medical terms from the question using LLM"""
-        prompt = f"""
-        Extract key medical terms from this question:
-        {question}
-        Return only the medical terms as a comma-separated list.
-        """
-        response = self.llm(prompt)
-        return [term.strip() for term in response.split(',')]
-
-    def _get_concepts(self, terms: List[str]) -> List[Dict]:
-        """Get concept information from Neo4j with correct property names"""
-        try:
-            concepts = []
-            for term in terms:
-                # Updated query with correct property names
-                query = """
-                MATCH (c)
-                WHERE (c:Disease OR c:Drug OR c:Symptom OR c:Anatomy OR c:Concept)
-                AND (
-                    toLower(c.term) CONTAINS toLower($term)
-                    OR any(syn IN c.synonyms WHERE toLower(syn) CONTAINS toLower($term))
-                )
-                OPTIONAL MATCH (c)-[:HAS_DEFINITION]->(d:Definition)
-                OPTIONAL MATCH (c)-[:HAS_SEMANTIC_TYPE]->(s:SemanticType)
-                RETURN 
-                    c.cui as cui,
-                    c.term as name,
-                    d.text as definition,
-                    labels(c) as types,
-                    s.semantic_type as semantic_type,
-                    c.source as source
-                LIMIT 5
-                """
-                results = self.graph.query(query, {'term': term})
-                concepts.extend(results)
-                
-            logger.info(f"Found {len(concepts)} concepts for terms: {terms}")
-=======
     def _extract_key_terms(self, question: str) -> List[Dict]:
         """Extract key medical terms and categorize them by node types"""
         prompt = f"""
@@ -577,7 +520,6 @@ class MedicalQuestionProcessor:
                         concepts.extend(results)
             
             logger.info(f"Found {len(concepts)} concepts")
->>>>>>> Supprethaa
             return concepts
             
         except Exception as e:
@@ -585,29 +527,6 @@ class MedicalQuestionProcessor:
             return []
 
     def _get_relationships(self, concepts: List[Dict]) -> List[Dict]:
-<<<<<<< HEAD
-        """Get relationships between concepts with correct property names"""
-        try:
-            relationships = []
-            cuis = [concept['cui'] for concept in concepts if 'cui' in concept]
-            
-            if not cuis:
-                return []
-                
-            # Updated relationship query with semantic type relationship
-            query = """
-            MATCH (c1)-[r]-(c2)
-            WHERE c1.cui IN $cuis
-            AND type(r) IN [
-                'ASSOCIATED_WITH', 'CAUSE_OF', 'CHEMICAL_OR_DRUG_AFFECTS_GENE_PRODUCT',
-                'DISEASE_HAS_FINDING', 'DISEASE_MAY_HAVE_FINDING',
-                'HAS_MECHANISM_OF_ACTION', 'MAY_TREAT', 'MAY_PREVENT',
-                'IS_FINDING_OF_DISEASE', 'MANIFESTATION_OF'
-            ]
-            OPTIONAL MATCH (c1)-[:HAS_SEMANTIC_TYPE]->(s1:SemanticType)
-            OPTIONAL MATCH (c2)-[:HAS_SEMANTIC_TYPE]->(s2:SemanticType)
-            RETURN 
-=======
         """Get relationships between concepts based on node types"""
         try:
             if not concepts:
@@ -662,27 +581,11 @@ class MedicalQuestionProcessor:
             WHERE c1.cui IN $cuis
             AND type(r) IN $rel_types
             RETURN DISTINCT
->>>>>>> Supprethaa
                 type(r) as relationship_type,
                 c1.cui as source_cui,
                 c1.term as source_name,
                 c2.cui as target_cui,
                 c2.term as target_name,
-<<<<<<< HEAD
-                s1.semantic_type as source_semantic_type,
-                s2.semantic_type as target_semantic_type,
-                r.source as relationship_source
-            ORDER BY type(r)
-            LIMIT 20
-            """
-            results = self.graph.query(query, {'cuis': cuis})
-            relationships.extend(results)
-            
-            return relationships
-            
-        except Exception as e:
-            logger.error(f"Error getting relationships from Neo4j: {str(e)}")
-=======
                 labels(c1)[0] as source_type,
                 labels(c2)[0] as target_type
             """
@@ -699,38 +602,12 @@ class MedicalQuestionProcessor:
             
         except Exception as e:
             logger.error(f"Error getting relationships: {str(e)}")
->>>>>>> Supprethaa
             return []
 
     def _generate_answer(self, question: str, concepts: List[Dict], relationships: List[Dict]) -> str:
         """Generate answer using knowledge graph data to enhance LLM response"""
         try:
             # Format relevant knowledge graph data as context
-<<<<<<< HEAD
-            context = "Medical Knowledge Graph Context:\n\n"
-            
-            # Add relevant concepts with definitions
-            context += "Related Medical Concepts:\n"
-            for concept in concepts[:5]:
-                context += f"\n• {concept.get('name')} (CUI: {concept.get('cui')})"
-                if concept.get('definition'):
-                    context += f"\n  Definition: {concept.get('definition')}"
-                if concept.get('semantic_type'):
-                    context += f"\n  Type: {concept.get('semantic_type')}"
-            
-            # Add relevant relationships
-            context += "\n\nKnown Medical Relationships:\n"
-            seen = set()
-            for rel in relationships[:10]:
-                rel_key = f"{rel.get('source_name')} -> {rel.get('relationship_type')} -> {rel.get('target_name')}"
-                if rel_key not in seen:
-                    context += f"\n• {rel_key}"
-                    seen.add(rel_key)
-
-            prompt = f"""You are a medical expert with access to a medical knowledge graph. 
-            Use the following knowledge graph data to help inform your answer, but you can also 
-            use your medical knowledge to provide a complete response.
-=======
             context = "Medical Knowledge Graph Data:\n\n"
             
             # Add relevant concepts with definitions
@@ -758,22 +635,11 @@ class MedicalQuestionProcessor:
 
             prompt = f"""You are a medical expert. Answer this question using ONLY the provided knowledge graph data. 
             Do not use external medical knowledge.
->>>>>>> Supprethaa
 
             Question: {question}
 
             {context}
 
-<<<<<<< HEAD
-            Please provide a comprehensive answer that:
-            1. Uses the knowledge graph data where relevant
-            2. Cites specific concepts (with CUIs) when referencing graph data
-            3. Adds medical context and explanations as needed
-            4. Clearly distinguishes between graph-based and general medical knowledge
-
-            Answer the question in a clear, professional manner."""
-            
-=======
             Provide a comprehensive answer that:
             1. Pick the correct answer from the list of choices provided
             2. Addresses the question directly
@@ -785,15 +651,12 @@ class MedicalQuestionProcessor:
             Answer in a clear, professional manner."""
         
             logger.info(f"\n\nPrompt: {prompt}\n\n")
->>>>>>> Supprethaa
             return self.llm(prompt)
             
         except Exception as e:
             logger.error(f"Error generating answer: {str(e)}")
             return "Error: Unable to generate answer due to data processing limitations."
 
-<<<<<<< HEAD
-=======
     def _validate_response(self, response, evidence_list):
         """Validate that response only uses provided evidence"""
         used_cuis = set()
@@ -854,23 +717,10 @@ class MedicalQuestionProcessor:
         # Call LLM with the prompt
         return self.llm(prompt)
 
->>>>>>> Supprethaa
 def main():
     try:
         load_dotenv()
         
-<<<<<<< HEAD
-        # Initialize connections
-        graph = Neo4jGraph(
-            url=os.getenv("NEO4J_URI"),
-            username=os.getenv("NEO4J_USERNAME"),
-            password=os.getenv("NEO4J_PASSWORD")
-        )
-        
-        # Initialize OpenAI client
-        client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-        
-=======
         # Initialize Neo4j connection with correct protocol
         graph = Neo4jGraph(
             url=os.getenv("NEO4J_URI"),
@@ -890,16 +740,11 @@ def main():
         # Initialize OpenAI client
         client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
         
->>>>>>> Supprethaa
         # Initialize processor
         processor = MedicalQuestionProcessor(
             graph=graph,
             llm_function=lambda x: client.chat.completions.create(
-<<<<<<< HEAD
-                model="gpt-4",
-=======
                 model="gpt-4o",
->>>>>>> Supprethaa
                 messages=[{"role": "user", "content": x}]
             ).choices[0].message.content
         )
@@ -917,10 +762,6 @@ def main():
             if 'error' in result:
                 print(f"\nError: {result['error']}")
             else:
-<<<<<<< HEAD
-                # Display answer in a structured format
-=======
->>>>>>> Supprethaa
                 print("\n" + "="*50)
                 print("MEDICAL QUESTION ANALYSIS")
                 print("="*50)
@@ -931,33 +772,6 @@ def main():
                 
                 print("\nANSWER:")
                 print("-"*50)
-<<<<<<< HEAD
-                answer_parts = result['answer'].split('\n')
-                for part in answer_parts:
-                    print(part)
-                
-                print("\nRELEVANT CONCEPTS:")
-                print("-"*50)
-                for concept in result['concepts'][:5]:  # Limit to top 5 concepts
-                    print(f"\nConcept: {concept.get('name')}")
-                    print(f"CUI: {concept.get('cui')}")
-                    if concept.get('definition'):
-                        print(f"Definition: {concept.get('definition')[:100]}...")
-                    print(f"Type: {', '.join(concept.get('types', []))}")
-                
-                print("\nKEY RELATIONSHIPS:")
-                print("-"*50)
-                seen_relationships = set()
-                count = 0
-                for rel in result['relationships']:
-                    if count >= 10:  # Limit to top 10 relationships
-                        break
-                    rel_key = f"{rel.get('source_name')} -> {rel.get('relationship_type')} -> {rel.get('target_name')}"
-                    if rel_key not in seen_relationships:
-                        print(rel_key)
-                        seen_relationships.add(rel_key)
-                        count += 1
-=======
                 print(result['answer'])
                 
                 print("\nRELEVANT CONCEPTS:")
@@ -1003,7 +817,6 @@ def main():
                         if rel_key not in seen_relationships:
                             print(rel_key)
                             seen_relationships.add(rel_key)
->>>>>>> Supprethaa
                 
                 print("\n" + "="*50)
                 
