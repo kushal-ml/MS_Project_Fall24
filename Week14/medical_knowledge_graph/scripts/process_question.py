@@ -535,7 +535,28 @@ class MedicalQuestionProcessor:
             # Get CUIs from found concepts
             cuis = [concept['cui'] for concept in concepts if 'cui' in concept]
             
-            # Define comprehensive relationship types based on UMLS structure
+            # First, get RELATES_TO relationships for all concepts
+            relates_query = """
+            MATCH (c1)-[r:RELATES_TO]-(c2)
+            WHERE c1.cui IN $cuis
+            RETURN DISTINCT
+                'RELATES_TO' as relationship_type,
+                c1.cui as source_cui,
+                c1.term as source_name,
+                c2.cui as target_cui,
+                c2.term as target_name,
+                labels(c1)[0] as source_type,
+                labels(c2)[0] as target_type
+            """
+            
+            related_concepts = self.graph.query(relates_query, {'cuis': cuis})
+            
+            # Add CUIs from related concepts to include them in relationship search
+            for rel in related_concepts:
+                if rel['target_cui'] not in cuis:
+                    cuis.append(rel['target_cui'])
+            
+            # Define relationship types as before
             relationship_types = {
                 'Disease': [
                     'MAY_TREAT', 'MAY_PREVENT', 'DISEASE_HAS_FINDING',
@@ -573,12 +594,12 @@ class MedicalQuestionProcessor:
                 if node_type in relationship_types:
                     all_rel_types.extend(relationship_types[node_type])
             
-            # Add bidirectional relationships
             all_rel_types = list(set(all_rel_types))
             
-            query = """
-            MATCH (c1)-[r]-(c2)  // Changed to bidirectional relationship
-            WHERE c1.cui IN $cuis
+            # Query for relationships between extracted concepts only
+            direct_query = """
+            MATCH (c1)-[r]-(c2)
+            WHERE c1.cui IN $cuis AND c2.cui IN $cuis
             AND type(r) IN $rel_types
             RETURN DISTINCT
                 type(r) as relationship_type,
@@ -590,15 +611,18 @@ class MedicalQuestionProcessor:
                 labels(c2)[0] as target_type
             """
             
-            results = self.graph.query(
-                query,
+            direct_relationships = self.graph.query(
+                direct_query,
                 {
                     'cuis': cuis,
                     'rel_types': all_rel_types
                 }
             )
             
-            return results
+            # Combine direct relationships with RELATES_TO relationships
+            all_relationships = direct_relationships + related_concepts
+            
+            return all_relationships
             
         except Exception as e:
             logger.error(f"Error getting relationships: {str(e)}")
@@ -618,17 +642,27 @@ class MedicalQuestionProcessor:
                     context += f"\n  Definition: {concept.get('definition')}"
                 if concept.get('types'):
                     context += f"\n  Type: {', '.join(concept.get('types'))}"
+                
+                # Add related terms right under each concept
+                related_terms = [r for r in relationships 
+                               if r.get('relationship_type') == 'RELATES_TO' 
+                               and r.get('source_cui') == concept.get('cui')]
+                if related_terms:
+                    context += "\n  Related terms: " + ", ".join(r.get('target_name') for r in related_terms)
             
-            # Add treatment relationships first
+            # Filter out RELATES_TO relationships for the main relationships section
+            direct_relationships = [r for r in relationships if r.get('relationship_type') != 'RELATES_TO']
+            
+            # Add treatment relationships
             context += "\n\nTreatment Relationships:\n"
-            treatment_rels = [r for r in relationships if r.get('relationship_type') in 
+            treatment_rels = [r for r in direct_relationships if r.get('relationship_type') in 
                             ['MAY_TREAT', 'MAY_BE_TREATED_BY', 'MAY_PREVENT']]
             for rel in treatment_rels:
                 context += f"\n• {rel.get('source_name')} -> {rel.get('relationship_type')} -> {rel.get('target_name')}"
 
             # Add mechanism relationships
             context += "\n\nMechanism Relationships:\n"
-            mechanism_rels = [r for r in relationships if r.get('relationship_type') in 
+            mechanism_rels = [r for r in direct_relationships if r.get('relationship_type') in 
                             ['HAS_MECHANISM_OF_ACTION', 'CHEMICAL_OR_DRUG_HAS_MECHANISM_OF_ACTION']]
             for rel in mechanism_rels:
                 context += f"\n• {rel.get('source_name')} -> {rel.get('relationship_type')} -> {rel.get('target_name')}"
