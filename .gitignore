@@ -28,8 +28,6 @@ Week14/medical_knowledge_graph/data/processed/*
 # Keep directory structure
 !Week14/medical_knowledge_graph/data/raw/umls/.gitkeep
 !Week14/medical_knowledge_graph/data/processed/.gitkeep
-<<<<<<< HEAD
-=======
 
 # Distribution / packaging
 dist/
@@ -41,4 +39,6 @@ build/
 .vscode/
 *.swp
 
->>>>>>> Supprethaa
+# MedQA dataset
+Week14/medical_knowledge_graph/data/raw/processed/medqa/
+

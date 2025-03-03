@@ -11,7 +11,6 @@ import json
 project_root = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(project_root))
 
-from src.processors.question_processor import QuestionProcessor
 from src.processors.umls_api_processor import UMLSAPIProcessor
 
 # Set up logging

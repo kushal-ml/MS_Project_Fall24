@@ -157,7 +157,7 @@ class UMLSProcessor(BaseProcessor, DatabaseMixin):
             
             logger.info("Data preprocessing completed successfully")
             return data
-            
+
         except Exception as e:
             logger.error(f"Error in data preprocessing: {str(e)}")
             raise
@@ -299,7 +299,7 @@ class UMLSProcessor(BaseProcessor, DatabaseMixin):
                         skipped += len(eng_concepts) - len(valid_concepts)
             
             return processed
-            
+
         except Exception as e:
             logger.error(f"Error in MRCONSO processing: {str(e)}")
             # Save checkpoint on error
@@ -409,15 +409,15 @@ class UMLSProcessor(BaseProcessor, DatabaseMixin):
                     except Exception as e:
                         logger.warning(f"Skipping MRREL row due to error: {str(e)}")
                         continue
-                
+
                 if batch:
                     self._create_relationships_batch(batch)
                     processed += len(batch)
                     print(f"\rProcessed {processed:,} relationships", end='')
-                
+
             print(f"\nCompleted relationship processing: {processed:,} relationships created")
             return processed
-            
+
         except Exception as e:
             logger.error(f"Error in relationships processing: {str(e)}")
             raise
@@ -632,7 +632,7 @@ class UMLSProcessor(BaseProcessor, DatabaseMixin):
             result = self.graph.query(cypher)
             count = result[0]['hierarchy_count'] if result else 0
             logger.info(f"Created {count} semantic type hierarchical relationships")
-            
+
         except Exception as e:
             logger.error(f"Error creating semantic type hierarchy: {str(e)}")
 
@@ -795,7 +795,7 @@ class UMLSProcessor(BaseProcessor, DatabaseMixin):
             """
             result = self.graph.query(cypher)
             return dict(result[0]) if result else {}
-            
+                    
         except Exception as e:
             logger.error(f"Error getting definition stats: {str(e)}")
             return {}
@@ -1187,7 +1187,7 @@ class UMLSProcessor(BaseProcessor, DatabaseMixin):
             print(f"Total HAS_SEMANTIC_TYPE relationships: {stats['relationships']['total_relationships']}")
             
             return stats
-
+            
         except Exception as e:
             logger.error(f"Error verifying semantic type updates: {str(e)}")
             raise
@@ -1513,7 +1513,7 @@ class UMLSProcessor(BaseProcessor, DatabaseMixin):
                 logger.info("All duplicate relationships have been cleaned up")
                 
             return deleted_count
-            
+
         except Exception as e:
             logger.error(f"Error cleaning up duplicate relationships: {str(e)}")
             raise
@@ -1724,7 +1724,7 @@ class UMLSProcessor(BaseProcessor, DatabaseMixin):
                                 created = result[0]['created']
                                 relationship_count += created
                                 logger.info(f"Created {created} relationships of type {rel_type}")
-                                
+            
                         except Exception as e:
                             if "exceeded the logical size limit" in str(e):
                                 logger.warning("Relationship limit reached")
