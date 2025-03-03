@@ -7,6 +7,7 @@ from dotenv import load_dotenv
 from openai import OpenAI
 from pathlib import Path
 import json
+import asyncio
 # Get the absolute path to the project root
 project_root = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(project_root))
@@ -55,7 +56,7 @@ class MedicalQuestionProcessorAPI:
             # 2. Search UMLS for each term
             concept_info = {}
             for term in key_terms:
-                results = await self.umls_api.search_and_get_info(term)
+                results = await self._search_term(term)
                 if results:
                     concept_info[term] = results
             
@@ -65,16 +66,13 @@ class MedicalQuestionProcessorAPI:
             # 4. Generate answer using LLM
             answer = await self._generate_answer(question, concept_info, relationships)
             
-            return {
-                'question': question,
-                'key_terms': key_terms,
-                'concepts': concept_info,
-                'relationships': relationships,
-                'answer': answer
-            }
+            # Add logging before returning
+            logger.info(f"UMLS processor returning data with keys: {answer.keys()}")
+            logger.info(f"Sample of concepts: {list(answer.get('concepts', {}).keys())[:3]}")
+            return answer
             
         except Exception as e:
-            logger.error(f"Error processing question: {str(e)}")
+            logger.error(f"Error in UMLS processing: {e}")
             return {'error': str(e)}
 
     async def _extract_key_terms(self, question: str) -> List[Dict]:
@@ -124,6 +122,23 @@ class MedicalQuestionProcessorAPI:
             logger.error(f"Unexpected error in term extraction: {str(e)}")
             return []
 
+    async def _search_term(self, term: str) -> List[Dict]:
+        max_retries = 3
+        retry_delay = 1  # seconds
+        
+        for attempt in range(max_retries):
+            try:
+                response = await self.umls_api.search_and_get_info(term)
+                return response
+            except Exception as e:
+                if attempt < max_retries - 1:
+                    logger.warning(f"Attempt {attempt + 1} failed, retrying in {retry_delay} seconds...")
+                    await asyncio.sleep(retry_delay)
+                    retry_delay *= 2  # Exponential backoff
+                else:
+                    logger.error(f"Failed to search UMLS after {max_retries} attempts: {e}")
+                    return []
+
     async def _get_concept_relationships(self, concept_info: Dict) -> List[Dict]:
         """Get relationships between identified concepts"""
         relationships = []
@@ -172,12 +187,11 @@ class MedicalQuestionProcessorAPI:
             return clean
 
         # Print all available definitions
-        print("\nAvailable English Definitions:")
-        for i, d in enumerate(definitions, 1):
-            value = clean_html(d.get('value', ''))
-            print(f"\nDefinition {i}:")
-            print(f"Value: {value}")
-            print(f"Source: {d.get('rootSource', 'Unknown')}")
+        # print("\nAvailable English Definitions:")
+        # for i, d in enumerate(definitions, 1):
+        #     print(f"\nDefinition {i}:")
+        #     print(f"Value: {d.get('value', '')}")
+        #     print(f"Source: {d.get('rootSource', 'Unknown')}")
 
         # Prioritize sources in this order
         preferred_sources = ['NCI', 'MSH', 'SNOMEDCT_US', 'MTH', 'CSP']
@@ -186,15 +200,15 @@ class MedicalQuestionProcessorAPI:
         for source in preferred_sources:
             for definition in definitions:
                 if definition.get('rootSource') == source:
-                    selected_def = clean_html(definition.get('value', ''))
-                    print(f"\nSelected Definition (from {source}):")
-                    print(selected_def)
+                    selected_def = definition.get('value', '')
+                    #print(f"\nSelected Definition (from {source}):")
+                    #print(selected_def)
                     return selected_def
 
         # If no preferred source found, return the first available definition
-        selected_def = clean_html(definitions[0].get('value', ''))
-        print("\nSelected Definition (first available):")
-        print(selected_def)
+        selected_def = definitions[0].get('value', '')
+        #print("\nSelected Definition (first available):")
+        #print(selected_def)
         return selected_def
 
     async def _generate_answer(self, question: str, concepts: Dict, relationships: List) -> str:
@@ -203,8 +217,10 @@ class MedicalQuestionProcessorAPI:
             # Format UMLS data with more detail
             umls_data = "UMLS Knowledge Base:\n\n"
             
-            # Add concepts with best definitions
+            # Add concepts with best definitions and convert HTML to JSON if needed
             umls_data += "Concepts and Definitions:\n"
+            json_definitions = []  # Store converted HTML definitions
+            
             for term, results in concepts.items():
                 for result in results:
                     if 'basic_info' in result:
@@ -212,17 +228,31 @@ class MedicalQuestionProcessorAPI:
                         name = result['basic_info'].get('name', '')
                         umls_data += f"\n• {name} (CUI: {cui})"
                         
-                        # Add the best definition
+                        # Add the best definition and check for HTML
                         if result.get('definitions'):
                             best_definition = self._select_best_definition(result['definitions'])
                             if best_definition:
                                 umls_data += f"\n  Definition: {best_definition}"
+                                
+                                # Check if definition contains HTML and convert to JSON
+                                if '<' in best_definition and '>' in best_definition:
+                                    json_def = {
+                                        'concept': name,
+                                        'cui': cui,
+                                        'sections': self._html_to_json(best_definition)
+                                    }
+                                    json_definitions.append(json_def)
                         
                         # Add semantic types
                         if result.get('semantic_types'):
                             sem_types = [st.get('name', '') for st in result['semantic_types']]
                             umls_data += f"\n  Semantic Types: {', '.join(sem_types)}"
             
+            # Add JSON definitions to the prompt if any were found
+            if json_definitions:
+                umls_data += "\n\nStructured JSON Definitions:\n"
+                umls_data += json.dumps(json_definitions, indent=2)
+
             # Add relationships with more detail
             umls_data += "\n\nRelationships between Concepts:\n"
             seen_relationships = set()
@@ -246,10 +276,12 @@ class MedicalQuestionProcessorAPI:
 
             {umls_data}
 
+            If any of the definitions are in HTML format, analyze each section carefull and use what you need to answer the question.
+            Also
             Provide your answer in this format:
             1. Answer and Explanation:
                 - State the correct option
-                - Explain using ONLY the UMLS data provided above
+                - Explain your thought process along the way on how you concluded the right answer using ONLY the UMLS data provided above
                 - Cite specific CUIs and relationships
             
             2. UMLS Evidence Used:
@@ -259,6 +291,7 @@ class MedicalQuestionProcessorAPI:
             
             3. Missing Information:
                 - State what additional UMLS data would be helpful
+            
             """
             
             return self.llm(prompt)
@@ -290,6 +323,27 @@ class MedicalQuestionProcessorAPI:
                 formatted.append(f"{rel_type}: {related.get('name', '')}")
         return "\n".join(formatted)
 
+    def _html_to_json(self, html_text: str) -> List[Dict]:
+        """Convert HTML definition to structured JSON format"""
+        sections = []
+        
+        # Simple parsing of h3 headers and paragraphs
+        import re
+        
+        # Find all h3 sections with their content
+        h3_pattern = r'<h3>(.*?)</h3>(.*?)(?=<h3>|$)'
+        matches = re.findall(h3_pattern, html_text, re.DOTALL)
+        
+        for title, content in matches:
+            # Clean up the content
+            clean_content = re.sub(r'<[^>]+>', '', content).strip()
+            sections.append({
+                'title': title.strip(),
+                'content': clean_content
+            })
+            
+        return sections
+
 async def main():
     try:
         # Load environment variables
@@ -301,7 +355,7 @@ async def main():
         # Initialize processor
         processor = MedicalQuestionProcessorAPI(
             llm_function=lambda x: client.chat.completions.create(
-                model="gpt-4",
+                model="gpt-4o",
                 messages=[{"role": "user", "content": x}]
             ).choices[0].message.content,
             umls_api_key=umls_api_key
@@ -354,5 +408,4 @@ async def main():
         print("\nQuestion processing completed")
 
 if __name__ == "__main__":
-    import asyncio
     asyncio.run(main()) 

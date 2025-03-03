@@ -19,6 +19,16 @@ Week14/medical_knowledge_graph/data/raw/umls/MRSAT.RRF
 # Processed data directory
 Week14/medical_knowledge_graph/data/processed/
 Week14/medical_knowledge_graph/data/processed/*
+Week14/medical_knowledge_graph/data/raw/processed/*
+#MedQA Embeddings
+Week14/medical_knowledge_graph/chroma_data/*
+Week14/.DS_Store
+Week14/medical_knowledge_graph/.DS_Store
+Week14/medical_knowledge_graph/data/.DS_Store
+Week14/medical_knowledge_graph/data/raw/.DS_Store
+Week14/medical_knowledge_graph/src/.DS_Store
+.DS_Store
+
 
 # Python cache files
 **/__pycache__/
