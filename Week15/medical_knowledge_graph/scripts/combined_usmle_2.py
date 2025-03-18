@@ -172,7 +172,7 @@ class USMLEProcessor:
 
         **3. EVIDENCE USED:**  
         - Knowledge Graph Concepts: [For each key concept used, cite the specific concept ID (e.g., C1: Myocardial Infarction)]
-        - Relationship Paths: [For each inference based on relationships, cite the complete path (e.g., "C5 (Chest Pain) → R3 (is symptom of) → C1 (Myocardial Infarction)")]
+        - Knowledge Graph Relationships: [List ALL relationships from the provided knowledge graph evidence that supports the answer to the question. Include EVERY relationship in the format "concept_1 relationship_type concept_2" (e.g., "Lisinopril may_treat Hypertension"). You MUST list these relationships even if you didn't explicitly use them in your reasoning.]
         - Textbook Evidence: [Quote the EXACT text phrases you relied on with citation (e.g., "From [Harrison's Principles of Medicine, REF2]: 'ST-segment elevation is diagnostic of acute myocardial infarction'")]
         - Medical Knowledge: [ONLY if evidence is missing, clearly state "Based on medical knowledge not in the provided evidence: [statement]"]
 
@@ -275,6 +275,21 @@ class USMLEProcessor:
         # 5. Format KG data for LLM consumption
         kg_data = self.kg_evaluator.format_kg_data(concepts, relationships, multihop_paths)
         kg_formatted = self.kg_evaluator.format_kg_data_for_prompt(concepts, relationships, multihop_paths)
+        
+        # # Print kg_evidence for debugging
+        # print("\n====== KNOWLEDGE GRAPH EVIDENCE SENT TO LLM ======")
+        # print(kg_formatted)
+        # print("====================================================\n")
+        
+        # Save to file for later analysis - Fix the encoding issue
+        try:
+            with open(f"{self.kg_evaluator.settings['visualization_dir']}/kg_evidence_debug.txt", "a", encoding="utf-8") as f:
+                f.write(f"\n\n== QUESTION: {question[:100]}... ==\n")
+                f.write(kg_formatted)
+                f.write("\n========================================\n")
+        except Exception as e:
+            logger.warning(f"Failed to save KG evidence to file: {str(e)}")
+            # Continue processing even if saving debug info fails
         
         # 6. Query Pinecone (RAG component)
         start_time = time.time()
@@ -830,6 +845,10 @@ class USMLEProcessor:
 - Context Strict Citation Quality: {float(eval_data['citation_quality']['context_strict'].get('citation_quality_score', 0)):.1f}/10
 - LLM Informed Citation Quality: {float(eval_data['citation_quality']['llm_informed'].get('citation_quality_score', 0)):.1f}/10
 - Context Value Added: {float(eval_data['context_contribution']['value_added_score']):.1f}/10
+
+Optional: Add these lines if you want more detailed scores
+- Evidence Quality (LLM Informed): {float(eval_data['evidence_based_evaluation']['llm_informed'].get('evidence_score', 0)):.1f}/10
+- Correctness (LLM Informed): {float(eval_data['evidence_based_evaluation']['llm_informed'].get('correctness_score', 0)):.1f}/10
             """
             
             detailed_answers.append(section)
@@ -924,6 +943,13 @@ Format your answer as follows:
         )
         kg_coverage_time = time.time() - start_time
         
+        # 4. Evaluate contribution of context to LLM answer
+        start_time = time.time()
+        context_contribution = self.kg_evaluator.evaluate_kg_contribution(
+            llm_informed_answer, llm_only_answer
+        )
+        context_contribution_time = time.time() - start_time
+        
         # Create a comprehensive evaluation result
         evaluation_result = {
             "question_id": question_dict["id"],
@@ -938,11 +964,13 @@ Format your answer as follows:
                 "llm_informed": citation_informed
             },
             "kg_coverage": kg_coverage,
+            "context_contribution": context_contribution,
             "timing": {
                 "evidence_evaluation": evidence_eval_time,
                 "standard_evaluation": standard_eval_time,
                 "kg_coverage_evaluation": kg_coverage_time,
-                "total_evaluation_time": evidence_eval_time + standard_eval_time + kg_coverage_time
+                "context_contribution_evaluation": context_contribution_time,
+                "total_evaluation_time": evidence_eval_time + standard_eval_time + kg_coverage_time + context_contribution_time
             }
         }
         
@@ -1013,11 +1041,13 @@ def main():
             
             # Show brief evaluation summary
             print("\n📊 Evaluation Summary:")
-            print(f"- LLM Only Quality: {float(evaluation['evidence_based_evaluation']['llm_only'].get('overall_quality', 0)):.1f}/10")
-            print(f"- Context Strict Quality: {float(evaluation['evidence_based_evaluation']['context_strict'].get('overall_quality', 0)):.1f}/10")
-            print(f"- LLM Informed Quality: {float(evaluation['evidence_based_evaluation']['llm_informed'].get('overall_quality', 0)):.1f}/10")
+            print(f"- LLM Only Quality: {float(evaluation['evidence_based_evaluation']['llm_only'].get('combined_score', 0)):.1f}/10")
+            print(f"- Context Strict Quality: {float(evaluation['evidence_based_evaluation']['context_strict'].get('combined_score', 0)):.1f}/10")
+            print(f"- LLM Informed Quality: {float(evaluation['evidence_based_evaluation']['llm_informed'].get('combined_score', 0)):.1f}/10")
             print(f"- KG Coverage: {float(evaluation['kg_coverage']['coverage_percentage']):.1f}%")
             print(f"- Value Added by Context: {float(evaluation['context_contribution']['value_added_score']):.1f}/10")
+            print(f"- Evidence Quality (LLM Informed): {float(evaluation['evidence_based_evaluation']['llm_informed'].get('evidence_score', 0)):.1f}/10")
+            print(f"- Correctness (LLM Informed): {float(evaluation['evidence_based_evaluation']['llm_informed'].get('correctness_score', 0)):.1f}/10")
             print("\nType 'evaluate' for full summary or 'visualize' for reports and graphs")
             
         except Exception as e:
