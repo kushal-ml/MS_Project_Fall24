@@ -55,7 +55,7 @@ class USMLEProcessor:
             graph=self.graph,
             llm_function=lambda x: self.llm.invoke(x).content
         )
-        
+        # 1. ANSWER CHOICE: [State the correct answer choice letter]
         self.answer_prompt = """You are a medical expert tasked with answering USMLE questions. You have access to two knowledge sources:
         1. A structured knowledge graph (Neo4j) containing UMLS medical concepts and relationships
         2. Medical textbook passages (retrieved via semantic search)
@@ -70,25 +70,31 @@ class USMLEProcessor:
 
         Please provide a detailed answer using ONLY the provided evidence following this format:
 
-        1. ANSWER CHOICE: [State the correct answer choice letter]
+        
 
-        2. REASONING PROCESS:
+        1. REASONING PROCESS:
         - Initial Understanding: [Break down the question and what it's asking]
         - Key Findings: [List the relevant facts from both knowledge sources]
-        - Chain of Thought: [Explain step-by-step how these facts lead to the answer]
+        - Chain of Thought: [Explain step-by-step how the facts from the evidence lead to the answer. Do not look for the answer in the evidence, but rather use the evidence to reason to the answer.]
         
-        3. EVIDENCE USED:
+        
+        2. EVIDENCE USED:
         - Knowledge Graph: [Cite specific concepts and relationships used]
         - Textbook References: [Quote relevant passages with reference numbers]
         
-        4. DIFFERENTIAL REASONING:
+        3. DIFFERENTIAL REASONING:
         - Why the correct answer is right
         - Why other choices are wrong (if information available)
         
-        5. CONFIDENCE AND LIMITATIONS:
+        4. CONFIDENCE AND LIMITATIONS:
         - State confidence level in answer
         - Note any missing information that would have helped
-        
+
+        5. MY KNOWLEDGE AND ASSUMPTIONS:
+        - State any assumptions you made in your reasoning process
+        - State any knowledge you had used in your reasoning process, that was not in the evidence provided
+        - Also, state if you could have answered the question with high confidence, without the evidence provided and explain why. If not, explain how the evidence helped you better arrive at the answer.
+
         Remember:
         - Only use provided evidence
         - Clearly cite sources for each claim
