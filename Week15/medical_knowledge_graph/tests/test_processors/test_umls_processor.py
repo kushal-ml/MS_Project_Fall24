@@ -238,95 +238,188 @@ class KnowledgeGraphEvaluator:
 
     
     def get_concepts(self, terms: List[Dict]) -> List[Dict]:
-        """Get concepts from knowledge graph matching the extracted terms"""
-        try:
-            concepts = []
-            for term_info in terms:
-                term = term_info['term']
-                query = """
+        """
+        Get concepts from the knowledge graph based on extracted terms.
+        Enhanced to improve medication retrieval and add case-insensitive matching.
+        
+        Args:
+            terms: List of term dictionaries with 'term', 'type', and 'priority'
+        
+        Returns:
+            List of concept dictionaries
+        """
+        import logging
+        logging.basicConfig(level=logging.INFO)
+        logger = logging.getLogger(__name__)
+        
+        # Initialize concepts list
+        concepts = []
+        
+        # Skip if no terms provided
+        if not terms:
+            logger.warning("No terms provided for concept retrieval")
+            return concepts
+        
+        # Get a list of all term strings (regardless of priority)
+        # Remove parenthetical content for better matching
+        term_strings = []
+        for term in terms:
+            # Clean term for better matching
+            term_text = term.get("term", "").strip()
+            # Remove parenthetical content
+            cleaned_term = re.sub(r'\s*\([^)]*\)', '', term_text).strip()
+            if cleaned_term:
+                term_strings.append(cleaned_term)
+        
+        logger.info(f"Looking up concepts for {len(term_strings)} terms")
+        
+        # IMPROVEMENT 1: Direct case-insensitive matching for all terms
+        if term_strings:
+            direct_query = """
                 MATCH (c:Concept)
-                WHERE toLower(c.term) CONTAINS toLower($term)
-                OR EXISTS {
-                    MATCH (c)-[:SAME_AS]-(syn:Concept)
-                    WHERE toLower(syn.term) CONTAINS toLower($term)
-                }
-                OR EXISTS {
-                    MATCH (c)-[:TRADENAME_OF]-(tradename:Concept)
-                    WHERE toLower(tradename.term) CONTAINS toLower($term)
-                }
-                WITH c
-                OPTIONAL MATCH (c)-[:HAS_DEFINITION]->(d:Definition)
-                RETURN DISTINCT
-                    c.cui AS cui,
-                    c.term AS term,
-                    d.text AS definition,
-                    labels(c) AS types,
-                    $original_term AS original_term
-                LIMIT 13
-                """
-                results = self.graph.query(query, {'term': term, 'original_term': term})
-                valid_results = [r for r in results if r and isinstance(r, dict) and 'cui' in r]
-                concepts.extend(valid_results)
-                
-                # Add vector search if enabled and exact matches are insufficient
-                if self.settings["vector_search_enabled"] and len(valid_results) < 2 and self.embedding_model:
-                    logger.info(f"Performing vector search for term: {term}")
-                    
-                    # Get candidate concepts for vector search
-                    vector_query = """
-                    MATCH (c:Concept)
-                    RETURN c.cui AS cui, c.term AS term, c.embedding AS embedding
-                    LIMIT 3000
-                    """
-                    candidates = self.graph.query(vector_query)
-                    
-                    if candidates:
-                        # Prepare for vector search
-                        candidate_terms = [c['term'] for c in candidates if c and 'term' in c]
-                        
-                        # Perform vector search
-                        vector_results = self.vector_similarity_search(term, candidate_terms, candidates)
-                        
-                        # Get full details for top matches
-                        for result in vector_results[:10]:  # Top 10 vector matches
-                            if result["cui"] not in [c.get("cui") for c in valid_results]:
-                                detail_query = """
-                                MATCH (c:Concept {cui: $cui})
-                                OPTIONAL MATCH (c)-[:HAS_DEFINITION]->(d:Definition)
-                                RETURN
-                                    c.cui AS cui,
-                                    c.term AS term,
-                                    d.text AS definition,
-                                    labels(c) AS types,
-                                    $original_term AS original_term,
-                                    $similarity_score AS similarity_score
-                                """
-                                detail_results = self.graph.query(detail_query, {
-                                    'cui': result["cui"],
-                                    'original_term': term,
-                                    'similarity_score': result.get("similarity_score", 0)
-                                })
-                                
-                                if detail_results and isinstance(detail_results[0], dict):
-                                    # Mark as vector match
-                                    detail_results[0]["vector_match"] = True
-                                    concepts.append(detail_results[0])
+            WHERE toLower(c.term) IN $terms OR 
+                  ANY(t IN $terms WHERE toLower(c.term) CONTAINS toLower(t))
+            OPTIONAL MATCH (c)-[:HAS_DEFINITION]->(d)
+            RETURN c.cui as cui, c.term as term, d.text as definition,
+                   labels(c) as labels
+            LIMIT 50
+            """
             
-            return concepts[:self.settings["top_k_concepts"]]
-        except Exception as e:
-            logger.error(f"Concept search error: {str(e)}")
-            return []
+            results = self.graph.query(direct_query, params={"terms": [t.lower() for t in term_strings]})
+            
+            # Add direct match concepts
+            for result in results:
+                # Find which term this matched with
+                matching_term = None
+                for term in terms:
+                    if (term["term"].lower() in result["term"].lower() or 
+                        result["term"].lower() in term["term"].lower()):
+                        matching_term = term["term"]
+                        break
+                
+                concepts.append({
+                    "cui": result["cui"],
+                    "term": result["term"],
+                    "definition": result.get("definition", "No definition available"),
+                    "labels": result.get("labels", []),
+                    "match_type": "direct_match",
+                    "vector_match": False,
+                    "confidence": 1.0,
+                    "original_term": matching_term  # Add this line
+                })
+        
+        # IMPROVEMENT 2: Special handling for medication terms
+        medication_terms = [term["term"].lower() for term in terms if term.get("type") == "Drug"]
+        if medication_terms:
+            logger.info(f"Looking up medication terms: {medication_terms}")
+            direct_med_query = """
+            MATCH (c:Concept) 
+            WHERE toLower(c.term) IN $terms OR
+                  ANY(t IN $terms WHERE toLower(c.term) CONTAINS toLower(t))
+            OPTIONAL MATCH (c)-[:HAS_DEFINITION]->(d)
+            RETURN c.cui as cui, c.term as term, d.text as definition,
+                   labels(c) as labels
+            """
+            
+            results = self.graph.query(direct_med_query, params={"terms": medication_terms})
+            
+            # Add medication concepts with high confidence
+            for result in results:
+                # Avoid duplicates
+                if not any(c.get("cui") == result["cui"] for c in concepts):
+                    concepts.append({
+                        "cui": result["cui"],
+                        "term": result["term"],
+                        "definition": result.get("definition", "No definition available"),
+                        "labels": result.get("labels", []),
+                        "match_type": "med_match",
+                        "vector_match": False,
+                        "confidence": 1.0
+                    })
+        
+        # IMPROVEMENT 3: Vector search with lower threshold
+        # Lower the threshold from default 0.3 to 0.2
+        vector_search_threshold = self.settings.get("vector_search_threshold", 0.3)
+        improved_threshold = max(0.2, vector_search_threshold * 0.8)  # Lower by 20% but not below 0.2
+        
+        # Get concept terms from the graph for vector matching
+        if self.settings.get("vector_search_enabled", True):
+            # Get all concept terms from the graph (limited for performance)
+            concept_query = """
+            MATCH (c:Concept)
+            OPTIONAL MATCH (c)-[:HAS_DEFINITION]->(d)
+            RETURN c.cui as cui, c.term as term, d.text as definition
+            LIMIT 10000
+            """
+            concept_data = self.graph.query(concept_query)
+            concept_terms = [c["term"] for c in concept_data if c.get("term")]
+            
+            # Perform vector similarity search for each term
+            for term in terms:
+                term_text = term.get("term", "").strip()
+                if not term_text or len(term_text) < 3:
+                    continue
+                    
+                similar_concepts = self.vector_similarity_search(
+                    term_text, concept_terms, concept_data
+                )
+                
+                # Filter by improved threshold and add to concepts list
+                for concept in similar_concepts:
+                    # Skip if score is below improved threshold
+                    if concept.get("score", 0) < improved_threshold:
+                        continue
+                    
+                    # Skip if already in concepts list
+                    if any(c.get("cui") == concept.get("cui") for c in concepts):
+                        continue
+                    
+                    # Add to concepts list
+                    concepts.append({
+                        "cui": concept.get("cui"),
+                        "term": concept.get("term"),
+                        "definition": concept.get("definition"),
+                        "vector_match": True,
+                        "match_type": "vector_match",
+                        "confidence": concept.get("score", 0),
+                        "source_term": term_text,
+                        "original_term": term_text  # Add this line
+                    })
+        
+        # Deduplicate concepts based on CUI
+        unique_concepts = {}
+        for concept in concepts:
+            cui = concept.get("cui")
+            if cui:
+                # Keep the concept with the highest confidence
+                if cui not in unique_concepts or concept.get("confidence", 0) > unique_concepts[cui].get("confidence", 0):
+                    unique_concepts[cui] = concept
+        
+        # IMPROVEMENT 4: Log missing concepts
+        found_terms = set(c.get('term', '').lower() for c in unique_concepts.values())
+        term_texts = [t.get('term', '').lower() for t in terms]
+        missing_terms = [t['term'] for t in terms if t['term'].lower() not in found_terms 
+                        and len(t['term']) > 2]  # Skip very short terms
+                        
+        if missing_terms:
+            logger.warning(f"Could not find concepts for terms: {', '.join(missing_terms)}")
+            
+        # Log success statistics
+        logger.info(f"Found {len(unique_concepts)} unique concepts from {len(terms)} terms")
+        
+        # Return the list of unique concepts
+        return list(unique_concepts.values())
             
     def get_relationships(self, concepts: List[Dict]) -> List[Dict]:
         """Get all relationships between found concepts without filtering by relationship type"""
         try:
             if not concepts:
                 return []
-            
+                
             cuis = [c.get('cui') for c in concepts if c and c.get('cui')]
             if not cuis:
                 return []
-            
+                
             # Modified query to retrieve all relationship types
             query = """
             MATCH (c1:Concept)-[r]->(c2:Concept)
@@ -523,7 +616,7 @@ class KnowledgeGraphEvaluator:
                 for idx, (i, rel) in enumerate(rels[:5]):
                     rel_id = f"R{i+1}"
                     # Display relationship clearly as a medical fact
-                    output_parts.append(f"  - [ID: {rel_id}] {rel.get('source_term', '')} → {rel.get('target_term', '')}")
+                    output_parts.append(f"  - [ID: {rel_id}] {rel.get('source_name', '')} → {rel.get('target_name', '')}")
                 
                 if len(rels) > 5:
                     output_parts.append(f"  - ... and {len(rels)-5} more {rel_type} relationships")
@@ -899,7 +992,17 @@ class KnowledgeGraphEvaluator:
         # Calculate term coverage
         found_terms = set()
         for concept in concepts:
-            original_term = concept.get('original_term', '')
+            # Try multiple properties that might contain the original term
+            original_term = concept.get('original_term', '') or concept.get('source_term', '')
+            
+            # If those aren't found, we could try matching by comparing the concept term with extracted terms
+            if not original_term:
+                concept_term = concept.get('term', '').lower()
+                for term in extracted_terms:
+                    if term['term'].lower() in concept_term or concept_term in term['term'].lower():
+                        original_term = term['term']
+                        break
+                        
             if original_term:
                 found_terms.add(original_term)
         
