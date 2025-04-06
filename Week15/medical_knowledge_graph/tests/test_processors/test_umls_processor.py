@@ -481,7 +481,12 @@ class KnowledgeGraphEvaluator:
                         start.term as source_term,
                         end.cui as target_cui,
                         end.term as target_term,
-                        [node in nodes | {{cui: node.cui, term: node.term}}] as path_nodes,
+                        [node in nodes | {{
+                            cui: node.cui, 
+                            term: node.term,
+                            semantic_type: node.semantic_type,
+                            labels: labels(node)
+                        }}] as path_nodes,
                         [rel in rels | {{type: type(rel)}}] as path_rels,
                         length(path) as path_length
                     """
@@ -502,8 +507,22 @@ class KnowledgeGraphEvaluator:
                     
                     for i in range(len(rels)):
                         rel_type = rels[i]['type']
-                        next_node = nodes[i+1]['term'] if i+1 < len(nodes) else "Unknown"
-                        path_description.append(f"-[{rel_type}]->({next_node})")
+                        next_node = nodes[i+1] if i+1 < len(nodes) else {}
+                        
+                        # Get appropriate label based on node type
+                        node_label = "Unknown"
+                        
+                        # First try term for Concept nodes
+                        if 'term' in next_node and next_node['term']:
+                            node_label = next_node['term']
+                        # Then try semantic_type for SemanticType nodes
+                        elif 'semantic_type' in next_node and next_node['semantic_type']:
+                            node_label = next_node['semantic_type']
+                        # Fallback to labels as a hint for debugging
+                        elif 'labels' in next_node and next_node['labels']:
+                            node_label = f"Unknown:{','.join(next_node['labels'])}"
+                        
+                        path_description.append(f"-[{rel_type}]->({node_label})")
                     
                     formatted_paths.append({
                         'source_term': path['source_term'],
@@ -1235,7 +1254,7 @@ class KnowledgeGraphEvaluator:
                     except Exception as e:
                         logger.error(f"Error processing question: {str(e)}")
         else:
-            # Process questions sequentially
+                # Process questions sequentially
             for question in tqdm(questions, desc="Evaluating questions"):
                 question_result = self.run_ablation_study(question)
                 results.append(question_result)
@@ -1248,7 +1267,7 @@ class KnowledgeGraphEvaluator:
                     json.dump(results, f, indent=2)
             
             return results
-    
+        
     def summarize_results(self) -> Dict:
         """Summarize evaluation results"""
         if not self.results:

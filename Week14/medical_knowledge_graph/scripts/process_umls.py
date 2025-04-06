@@ -80,6 +80,8 @@ def main():
         
         # Create indexes first
         processor.create_indexes()
+        processor.create_vector_index()
+ 
         
         # Process the dataset
         processor.process_dataset(files)
@@ -129,6 +131,17 @@ def main():
         - Created concepts: {results['concepts_created']}
         - Created relationships: {results['relationships_created']}
         """)
+        
+        # Add embeddings to existing concepts
+        # processor.add_embeddings_to_existing_concepts(batch_size=200) 
+        
+        results = processor.vector_similarity_search("diabetes mellitus", limit=10)
+        for result in results:
+            print(f"{result['term']} (CUI: {result['cui']}) - Score: {result['score']}")
+        
+        results = processor.hybrid_search("heart attack symptoms", keyword_limit=5, vector_limit=10)
+        for result in results:
+            print(f"{result['term']} (CUI: {result['cui']}) - Score: {result['score']} - Source: {result['source']}")
         
         return results
         
