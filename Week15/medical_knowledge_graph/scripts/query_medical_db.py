@@ -47,9 +47,10 @@ RAG_PROMPT = ChatPromptTemplate.from_messages([
     - When citing, use exact quotes from the references and indicate the chunk number
     - If information needed to answer the question is missing from the references, explicitly state this
     - Format response in these sections:
-        1. Direct Evidence from References (with exact quotes)
-        2. Missing Information (what we need but don't have)
-        3. Conclusion (based ONLY on available evidence)
+        1. Correct answer choice
+        2. Direct Evidence from References (with exact quotes) that supports your reasoning that led to the correct answer choice
+        3. Missing Information (what we need but don't have)
+        4. Conclusion (based ONLY on available evidence)
     
     If you cannot find explicit information to answer the question, say: "The provided references do not contain sufficient direct evidence to answer this question."
     """),

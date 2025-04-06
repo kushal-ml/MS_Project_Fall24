@@ -1,0 +1,362 @@
+[
+    {
+        "question": "A junior orthopaedic surgery resident is completing a carpal tunnel repair with the department chairman as the attending physician. During the case, the resident inadvertently cuts a flexor tendon. The tendon is repaired without complication. The attending tells the resident that the patient will do fine, and there is no need to report this minor complication that will not harm the patient, as he does not want to make the patient worry unnecessarily. He tells the resident to leave this complication out of the operative report. Which of the following is the correct next action for the resident to take?",
+        "options": {
+            "A": "Disclose the error to the patient and put it in the operative report",
+            "B": "Tell the attending that he cannot fail to disclose this mistake",
+            "C": "Report the physician to the ethics committee",
+            "D": "Refuse to dictate the operative report"
+        },
+        "answer": "Tell the attending that he cannot fail to disclose this mistake",
+        "domain": "Ethics",
+        "step": "Step 1"
+    },
+    {
+        "question": "A 67-year-old man with transitional cell carcinoma of the bladder comes to the physician because of a 2-day history of ringing sensation in his ear. He received this first course of neoadjuvant chemotherapy 1 week ago. Pure tone audiometry shows a sensorineural hearing loss of 45 dB. The expected beneficial effect of the drug that caused this patient's symptoms is most likely due to which of the following actions?",
+        "options": {
+            "A": "Inhibition of proteasome",
+            "B": "Hyperstabilization of microtubules",
+            "C": "Generation of free radicals",
+            "D": "Cross-linking of DNA"
+        },
+        "answer": "Cross-linking of DNA",
+        "domain": "Pharmacology",
+        "step": "Step 1"
+    },
+    {
+        "question": "Two weeks after undergoing an emergency cardiac catherization with stenting for unstable angina pectoris, a 61-year-old man has decreased urinary output and malaise. Examination shows mottled, reticulated purplish discoloration of the feet. Renal biopsy shows intravascular spindle-shaped vacuoles. Which of the following is the most likely cause of this patient's symptoms?",
+        "options": {
+            "A": "Renal papillary necrosis",
+            "B": "Cholesterol embolization",
+            "C": "Eosinophilic granulomatosis with polyangiitis",
+            "D": "Polyarteritis nodosa"
+        },
+        "answer": "Cholesterol embolization",
+        "domain": "Pathology",
+        "step": "Step 2&3"
+    },
+    {
+        "question": "A 39-year-old woman is brought to the emergency department because of fevers, chills, and left lower quadrant pain. Pelvic examination shows mucopurulent discharge from the cervical os and left adnexal tenderness. A blood culture is most likely to show which of the following?",
+        "options": {
+            "A": "Coagulase-positive, gram-positive cocci forming mauve-colored colonies on methicillin-containing agar",
+            "B": "Encapsulated, gram-negative coccobacilli forming grey-colored colonies on charcoal blood agar",
+            "C": "Spore-forming, gram-positive bacilli forming yellow colonies on casein agar",
+            "D": "Lactose-fermenting, gram-negative rods forming pink colonies on MacConkey agar"
+        },
+        "answer": "Lactose-fermenting, gram-negative rods forming pink colonies on MacConkey agar",
+        "domain": "Microbiology",
+        "step": "Step 1"
+    },
+    {
+        "question": "A 35-year-old man comes to the physician because of itchy, watery eyes for the past week. Physical examination shows bilateral conjunctival injection with watery discharge. Which of the following is the most appropriate treatment?",
+        "options": {
+            "A": "Erythromycin ointment",
+            "B": "Ketotifen eye drops",
+            "C": "Warm compresses",
+            "D": "Fluorometholone eye drops"
+        },
+        "answer": "Ketotifen eye drops",
+        "domain": "Clinical Management",
+        "step": "Step 2&3"
+    },
+    {
+        "question": "A 39-year-old man presents to the emergency department because of progressively worsening chest pain and nausea that started at a local bar 30 minutes prior. What should be the first step in management?",
+        "options": {
+            "A": "Diltiazem",
+            "B": "Labetalol",
+            "C": "Propranolol",
+            "D": "Reassurance and continuous monitoring"
+        },
+        "answer": "Reassurance and continuous monitoring",
+        "domain": "Clinical Management",
+        "step": "Step 2&3"
+    },
+    {
+        "question": "A 68-year-old male comes to the physician for evaluation of right flank pain. An ultrasound shows dilation of the right ureter and renal pelvis. Which of the following is the most likely underlying cause of this patient's condition?",
+        "options": {
+            "A": "Renal artery stenosis",
+            "B": "Benign prostatic hyperplasia",
+            "C": "Common iliac artery aneurysm",
+            "D": "Urethral stricture"
+        },
+        "answer": "Common iliac artery aneurysm",
+        "domain": "Anatomy",
+        "step": "Step 1"
+    },
+    {
+        "question": "A 65-year-old man is brought to the emergency department 30 minutes after the onset of acute chest pain. An ECG shows ST-segment depressions in leads II, III, and aVF. In addition to aspirin, which of the following drugs should be added to this patient's medication regimen?",
+        "options": {
+            "A": "Nifedipine",
+            "B": "Enoxaparin",
+            "C": "Clopidogrel",
+            "D": "Spironolactone"
+        },
+        "answer": "Clopidogrel",
+        "domain": "Pharmacology",
+        "step": "Step 2&3"
+    },
+    {
+        "question": "A 23-year-old woman comes to the physician because she is embarrassed about the appearance of her nails. Which of the following additional findings is most likely in this patient?",
+        "options": {
+            "A": "Silvery plaques on extensor surfaces",
+            "B": "Flesh-colored papules in the lumbosacral region",
+            "C": "Erosions of the dental enamel",
+            "D": "Holosystolic murmur at the left lower sternal border"
+        },
+        "answer": "Silvery plaques on extensor surfaces",
+        "domain": "Dermatology",
+        "step": "Step 1"
+    },
+    {
+        "question": "A 72-year-old man comes to the physician because of a 2-month history of fatigue and worsening abdominal pain. Bone marrow aspiration shows extensive fibrosis and a few scattered plasma cells. A JAK 2 assay is positive. Which of the following is the most appropriate next step in management?",
+        "options": {
+            "A": "Cladribine",
+            "B": "Prednisone",
+            "C": "Imatinib",
+            "D": "Ruxolitinib"
+        },
+        "answer": "Ruxolitinib",
+        "domain": "Hematology",
+        "step": "Step 2&3"
+    },
+    {
+        "question": "A 20-year-old man comes to the physician because of worsening gait unsteadiness and bilateral hearing loss for 1 month. Genetic evaluation shows a mutation of a tumor suppressor gene on chromosome 22 that encodes merlin. This patient is at increased risk for which of the following conditions?",
+        "options": {
+            "A": "Renal cell carcinoma",
+            "B": "Meningioma",
+            "C": "Astrocytoma",
+            "D": "Vascular malformations"
+        },
+        "answer": "Meningioma",
+        "domain": "Genetics",
+        "step": "Step 1"
+    },
+    {
+        "question": "A microbiologist is studying the emergence of a virulent strain of the virus. Which of the following viruses is capable of undergoing the process of co-infection and genome segment reassortment described?",
+        "options": {
+            "A": "Epstein-Barr virus",
+            "B": "Human immunodeficiency virus",
+            "C": "Rotavirus",
+            "D": "Vaccinia virus"
+        },
+        "answer": "Rotavirus",
+        "domain": "Microbiology",
+        "step": "Step 1"
+    },
+    {
+        "question": "A 59-year-old overweight woman presents to the urgent care clinic with severe abdominal pain for the past 2 hours. A CT scan of the abdomen shows a calcified mass near her gallbladder. Which of the following diagnoses should be excluded first in this patient?",
+        "options": {
+            "A": "Acute cholecystitis",
+            "B": "Gallbladder cancer",
+            "C": "Choledocholithiasis",
+            "D": "Pancreatitis"
+        },
+        "answer": "Gallbladder cancer",
+        "domain": "Surgery",
+        "step": "Step 2&3"
+    },
+    {
+        "question": "A 7-year-old boy is brought to his pediatrician’s office for a follow-up visit. He is being considered for an experimental therapy targeting a mediator that favors class switching of antibodies. Which of the following mediators is described in this experimental study?",
+        "options": {
+            "A": "IL-2",
+            "B": "IL-10",
+            "C": "IL-13",
+            "D": "IL-4"
+        },
+        "answer": "IL-4",
+        "domain": "Immunology",
+        "step": "Step 2&3"
+    },
+    {
+        "question": "A 47-year-old executive schedules an appointment with his physician for a routine medical check-up. A mid-systolic murmur is heard in the 2nd left intercostal space that radiates to the carotids. Which of the following changes would occur when the patient stands from a supine position?",
+        "options": {
+            "A": "An increase in right atrial pressure",
+            "B": "An increase in pulmonary capillary wedge pressure",
+            "C": "A reduction in the slope of the pacemaker potential",
+            "D": "A reduction in diastolic filling time"
+        },
+        "answer": "A reduction in diastolic filling time",
+        "domain": "Physiology",
+        "step": "Step 1"
+    },
+    {
+        "question": "A 29-year-old man presents to the emergency department due to central chest pain over the past 3 days. On physical exam, a scratching sound of to-and-fro character is audible. Which of the following is the optimal therapy for this patient?",
+        "options": {
+            "A": "Indomethacin +/- omeprazole",
+            "B": "Ibuprofen + colchicine +/- omeprazole",
+            "C": "Pericardiocentesis",
+            "D": "Pericardiectomy"
+        },
+        "answer": "Ibuprofen + colchicine +/- omeprazole",
+        "domain": "Cardiology",
+        "step": "Step 2&3"
+    },
+    {
+        "question": "A 46-year-old man is brought to the emergency department for evaluation of altered mental status. Neurological exam shows diminished deep tendon reflexes bilaterally and an ataxic gait. Which of the following is the most likely cause of this patient's symptoms?",
+        "options": {
+            "A": "Hypoglycemia",
+            "B": "Ethanol intoxication",
+            "C": "Cannabis intoxication",
+            "D": "Benzodiazepine intoxication"
+        },
+        "answer": "Benzodiazepine intoxication",
+        "domain": "Neurology",
+        "step": "Step 2&3"
+    },
+    {
+        "question": "A 77-year-old woman presents to the emergency room with fever, malaise, and night sweats. Fine-needle aspiration demonstrates centroblastic and immunoblastic cell presence. Which of the following risk factors is responsible for this patient’s condition?",
+        "options": {
+            "A": "Travel to Africa",
+            "B": "Axillary lymph node involvement",
+            "C": "Previous radiation therapy",
+            "D": "Previous breast cancer"
+        },
+        "answer": "Previous radiation therapy",
+        "domain": "Oncology",
+        "step": "Step 1"
+    },
+    {
+        "question": "A 3-month-old infant is brought to her pediatrician because she coughs and seems to have difficulty breathing while feeding. Physical exam reveals a high-pitched holosystolic murmur. The most likely cause of this patient's symptoms is associated with which of the following abnormalities?",
+        "options": {
+            "A": "22q11 deletion",
+            "B": "Deletion of genes on chromosome 7",
+            "C": "Lithium exposure in utero",
+            "D": "Maternal alcohol consumption"
+        },
+        "answer": "22q11 deletion",
+        "domain": "Genetics",
+        "step": "Step 1"
+    },
+    {
+        "question": "A 30-year-old African American woman comes to the physician for the evaluation of a dry cough and chest discomfort for the past 3 days. Bronchoalveolar lavage shows macrophages filled with a dimorphic fungus with septate hyphae. Which of the following is the most likely cause of this patient's symptoms?",
+        "options": {
+            "A": "Legionella pneumophila infection",
+            "B": "Pneumocystis pneumonia",
+            "C": "Histoplasma capsulatum infection",
+            "D": "Blastomyces dermatitidis infection"
+        },
+        "answer": "Histoplasma capsulatum infection",
+        "domain": "Microbiology",
+        "step": "Step 2&3"
+    },
+    {
+        "question": "A 62-year-old patient has been hospitalized for a week due to a stroke. Chest radiography shows a new consolidation on the right side. What is the most likely causal microorganism?",
+        "options": {
+            "A": "Streptococcus pneumoniae",
+            "B": "Mycobacterium tuberculosis",
+            "C": "Haemophilus influenzae",
+            "D": "Staphylococcus aureus"
+        },
+        "answer": "Staphylococcus aureus",
+        "domain": "Microbiology",
+        "step": "Step 1"
+    },
+    {
+        "question": "A 6-year-old boy is brought to the emergency department by his mother for worsening wheezing and shortness of breath. One hour after treatment, the child is limp and lethargic. Which of the following is the most appropriate next step in management?",
+        "options": {
+            "A": "Intubate with mechanical ventilation",
+            "B": "Perform needle thoracostomy at the 2nd intercostal space",
+            "C": "Perform bronchoscopy",
+            "D": "Provide additional dose of methylprednisolone"
+        },
+        "answer": "Intubate with mechanical ventilation",
+        "domain": "Pulmonology",
+        "step": "Step 2&3"
+    },
+    {
+        "question": "A 5-year-old female suffers from recurrent infections by Aspergillus species, Pseudomonas species, and Staphylococcus aureus. The patient's neutrophils fail to react during the nitroblue tetrazolium test. Which of the following is most likely dysfunctional in this patient?",
+        "options": {
+            "A": "Immunoglobulin class switching",
+            "B": "Superoxide dismutase",
+            "C": "Myeloperoxidase",
+            "D": "Respiratory burst"
+        },
+        "answer": "Respiratory burst",
+        "domain": "Immunology",
+        "step": "Step 1"
+    },
+    {
+        "question": "A 3-year-old boy presents to the emergency department with a ‘cough-like-a-seal bark’ and a high-pitched inspiratory noise. What is a chest X-ray likely to show?",
+        "options": {
+            "A": "Increased interstitial markings",
+            "B": "Lobar consolidation in the lingual",
+            "C": "Thumbprint sign on the lateral image",
+            "D": "Steeple sign"
+        },
+        "answer": "Steeple sign",
+        "domain": "Radiology",
+        "step": "Step 2&3"
+    },
+    {
+        "question": "A 26-year-old woman presents to a gynecologist after a missed period. Her current anti-TB regimen includes rifampin. Which of the following mechanisms best explains the failure of oral contraceptives in this patient?",
+        "options": {
+            "A": "Induction of CYP3A4 by rifampin leading to decreased serum levels of ethinylestradiol and progesterone",
+            "B": "Induction of CYP2A6 by rifampin leading to increased inactivation of ethinylestradiol",
+            "C": "Interference with the intestinal absorption of the oral contraceptive by pyrazinamide",
+            "D": "Increased renal elimination of the progesterone component of the oral contraceptive by ethambutol"
+        },
+        "answer": "Induction of CYP3A4 by rifampin leading to decreased serum levels of ethinylestradiol and progesterone",
+        "domain": "Pharmacology",
+        "step": "Step 1"
+    },
+    {
+        "question": "A 4-year-old boy presents with 4 days of intermittent vomiting and 5-6 daily loose stools. The next day, he complains of lower extremity weakness and tingling. Which of the following lab findings would most likely be seen in this patient?",
+        "options": {
+            "A": "Gram stain positive CSF",
+            "B": "Peripheral eosinophilia",
+            "C": "Xanthochromia on cerebrospinal fluid analysis",
+            "D": "Increased cerebrospinal fluid protein with normal cell count"
+        },
+        "answer": "Increased cerebrospinal fluid protein with normal cell count",
+        "domain": "Neurology",
+        "step": "Step 1"
+    },
+    {
+        "question": "A 3-week-old male newborn is brought to the physician because of an inward turning of his left forefoot. Tickling the lateral border of the foot leads to correction of the deformity. Which of the following is the most appropriate next step in the management of this patient?",
+        "options": {
+            "A": "Foot abduction brace",
+            "B": "Arthrodesis of the forefoot",
+            "C": "Reassurance",
+            "D": "Tarsometatarsal capsulotomy"
+        },
+        "answer": "Reassurance",
+        "domain": "Orthopedics",
+        "step": "Step 2&3"
+    },
+    {
+        "question": "A 25-year-old woman comes to the physician because of irregular menstrual bleeding. Laboratory studies show elevated testosterone. Which of the following tests is the most appropriate next step in screening for comorbidities in this patient?",
+        "options": {
+            "A": "17-hydroxyprogesterone and cortisol level measurements",
+            "B": "CA-125 level measurement",
+            "C": "Blood glucose and cholesterol level measurements",
+            "D": "TSH and T4 level measurements"
+        },
+        "answer": "Blood glucose and cholesterol level measurements",
+        "domain": "Endocrinology",
+        "step": "Step 2&3"
+    },
+    {
+        "question": "A 51-year-old woman goes to respiratory function testing to evaluate her shortness of breath. Which of the following best represents the total volume of gas in this patient's airways and lungs that does not participate in gas exchange?",
+        "options": {
+            "A": "480 mL",
+            "B": "600 mL",
+            "C": "800 mL",
+            "D": "1200 mL"
+        },
+        "answer": "480 mL",
+        "domain": "Physiology",
+        "step": "Step 1"
+    },
+    {
+        "question": "A 44-year-old woman comes to the physician because of a 6-month history of fatigue, intermittent fever, and a progressive, non-productive cough. A biopsy specimen of a cervical lymph node shows organized epithelioid histiocytes and multinucleated giant cells without focal necrosis. The initial treatment of this patient's condition should include which of the following drugs?",
+        "options": {
+            "A": "Cisplatin",
+            "B": "Lamivudine",
+            "C": "Isoniazid",
+            "D": "Prednisone"
+        },
+        "answer": "Prednisone",
+        "domain": "Pulmonology",
+        "step": "Step 1"
+    }
+]
