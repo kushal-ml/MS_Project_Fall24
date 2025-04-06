@@ -107,6 +107,13 @@ class KnowledgeGraphEvaluator:
             "options": ["Acute blood loss", "Chronic lymphocytic leukemia", "Erythrocyte enzyme deficiency", "Erythropoietin deficiency", "Immunohemolysis", "Microangiopathic hemolysis", "Polycythemia vera", "Sickle cell disease", "Sideroblastic anemia", "β-Thalassemia trait"],
                 "difficulty": "medium"
             },
+            {
+                "id": "q4",
+                "question": "A 5-year-old girl is brought to the emergency department by her mother because of multiple episodes of nausea and vomiting that last about 2 hours. During this period, she has had 6–8 episodes of bilious vomiting and abdominal pain. The vomiting was preceded by fatigue. The girl feels well between these episodes. She has missed several days of school and has been hospitalized 2 times during the past 6 months for dehydration due to similar episodes of vomiting and nausea. The patient has lived with her mother since her parents divorced 8 months ago. Her immunizations are up-to-date. She is at the 60th percentile for height and 30th percentile for weight. She appears emaciated. Her temperature is 36.8°C (98.8°F), pulse is 99/min, and blood pressure is 82/52 mm Hg. Examination shows dry mucous membranes. The lungs are clear to auscultation. Abdominal examination shows a soft abdomen with mild diffuse tenderness with no guarding or rebound. The remainder of the physical examination shows no abnormalities. Which of the following is the most likely diagnosis?",
+                "answer": "Cyclic vomiting syndrome",
+                "options": ["Cyclic vomiting syndrome", "Gastroenteritis", "Hypertrophic pyloric stenosis", "Gastroesophageal reflux disease"],
+                "difficulty": "medium"
+            }
             # More questions as needed...
         ]
         
@@ -165,13 +172,27 @@ class KnowledgeGraphEvaluator:
     
     def compute_embeddings(self, texts: List[str]) -> np.ndarray:
         """Compute embeddings using SentenceTransformer"""
-        if not self.embedding_model or not texts:
+        if not texts:
             return np.array([])
         
         try:
-            # This directly uses SentenceTransformer's encode method
-            embeddings = self.embedding_model.encode(texts)
-            return embeddings
+            # First try with the embedding model
+            if self.embedding_model:
+                logger.info(f"Computing embeddings for {len(texts)} texts")
+                embeddings = self.embedding_model.encode(texts)
+                return embeddings
+            else:
+                # Fallback to OpenAI embeddings if available
+                if hasattr(self, 'embeddings') and self.embeddings:
+                    logger.info("Using OpenAI embeddings as fallback")
+                    embeddings = []
+                    for text in texts:
+                        emb = self.embeddings.embed_query(text)
+                        embeddings.append(emb)
+                    return np.array(embeddings)
+                else:
+                    logger.error("No embedding model available")
+                    return np.array([])
         except Exception as e:
             logger.error(f"Error computing embeddings: {str(e)}")
             return np.array([])
@@ -185,12 +206,44 @@ class KnowledgeGraphEvaluator:
             # Get the query term embedding
             query_embedding = self.compute_embeddings([query_term])[0]
             
-            # Debug info
+            # More detailed debug info
             logger.info(f"Found {len(concept_data)} candidate concepts for vector search")
-            logger.info(f"Candidates with embeddings: {sum(1 for c in concept_data if 'embedding' in c)}")
+            concepts_with_embeddings = [c for c in concept_data if 'embedding' in c]
+            logger.info(f"Candidates with embeddings: {len(concepts_with_embeddings)}")
             
+            if len(concepts_with_embeddings) > 0:
+                # Log the first embedding to verify format
+                sample_embedding = concepts_with_embeddings[0].get('embedding')
+                logger.info(f"Sample embedding type: {type(sample_embedding)}")
+                if isinstance(sample_embedding, str):
+                    logger.info("Embeddings appear to be stored as strings, converting to numpy arrays")
+                    
             # Extract precomputed embeddings directly from the graph
-            concept_embeddings = np.array([c['embedding'] for c in concept_data if 'embedding' in c])
+            # Handle different embedding formats (list, string, etc.)
+            concept_embeddings = []
+            for c in concept_data:
+                if 'embedding' in c:
+                    emb = c['embedding']
+                    # Convert string to list if needed
+                    if isinstance(emb, str):
+                        try:
+                            # Try parsing as JSON string
+                            import json
+                            emb = json.loads(emb)
+                        except:
+                            # Try parsing as literal string representation of list
+                            import ast
+                            try:
+                                emb = ast.literal_eval(emb)
+                            except:
+                                logger.warning(f"Could not parse embedding: {emb[:30]}...")
+                                continue
+                
+                    # Add to embeddings list
+                    concept_embeddings.append(np.array(emb))
+            
+            concept_embeddings = np.array(concept_embeddings)
+            
             if len(concept_embeddings) == 0:
                 logger.warning("No embeddings found in candidates")
                 return []
@@ -238,16 +291,6 @@ class KnowledgeGraphEvaluator:
 
     
     def get_concepts(self, terms: List[Dict]) -> List[Dict]:
-        """
-        Get concepts from the knowledge graph based on extracted terms.
-        Enhanced to improve medication retrieval and add case-insensitive matching.
-        
-        Args:
-            terms: List of term dictionaries with 'term', 'type', and 'priority'
-        
-        Returns:
-            List of concept dictionaries
-        """
         import logging
         logging.basicConfig(level=logging.INFO)
         logger = logging.getLogger(__name__)
@@ -263,115 +306,199 @@ class KnowledgeGraphEvaluator:
         # Get a list of all term strings (regardless of priority)
         # Remove parenthetical content for better matching
         term_strings = []
-        for term in terms:
+        term_dict = {}  # To track which cleaned term came from which original term
+        
+        logger.info("DEBUG: Original terms:")
+        for i, term in enumerate(terms):
             # Clean term for better matching
             term_text = term.get("term", "").strip()
+            logger.info(f"DEBUG: Term {i}: {term_text} (type: {term.get('type', 'Unknown')})")
+            
             # Remove parenthetical content
             cleaned_term = re.sub(r'\s*\([^)]*\)', '', term_text).strip()
             if cleaned_term:
                 term_strings.append(cleaned_term)
+                term_dict[cleaned_term] = term_text
+                logger.info(f"DEBUG: Cleaned term {i}: '{cleaned_term}' from original '{term_text}'")
         
         logger.info(f"Looking up concepts for {len(term_strings)} terms")
+        logger.info(f"Processed terms for query: {term_strings}")
         
         # IMPROVEMENT 1: Direct case-insensitive matching for all terms
         if term_strings:
+            logger.info("DEBUG: ===== EXECUTING DIRECT MATCHING QUERY =====")
+            logger.info(f"DEBUG: Query parameters: {term_strings}")
+            
+            # Execute individual queries for each term for debugging
+            for i, term in enumerate(term_strings):
+                debug_query = """
+                MATCH (c:Concept)
+                WHERE toLower(c.term) = toLower($term) OR toLower(c.term) CONTAINS toLower($term)
+                OPTIONAL MATCH (c)-[:HAS_DEFINITION]->(d)
+                RETURN c.cui as cui, c.term as term, d.text as definition,
+                    labels(c) as labels
+                LIMIT 5
+                """
+                debug_results = self.graph.query(debug_query, {"term": term})
+                logger.info(f"DEBUG: Direct query results for term '{term}': {len(debug_results)} matches")
+                for j, result in enumerate(debug_results[:5]):  # Log first 5 results
+                    logger.info(f"DEBUG:   Result {j}: CUI={result.get('cui', 'None')}, Term='{result.get('term', 'None')}'")
+            
+            # Now execute the combined query
             direct_query = """
                 MATCH (c:Concept)
             WHERE toLower(c.term) IN $terms OR 
-                  ANY(t IN $terms WHERE toLower(c.term) CONTAINS toLower(t))
+                ANY(t IN $terms WHERE toLower(c.term) CONTAINS toLower(t))
             OPTIONAL MATCH (c)-[:HAS_DEFINITION]->(d)
             RETURN c.cui as cui, c.term as term, d.text as definition,
-                   labels(c) as labels
-            LIMIT 50
+                labels(c) as labels
             """
             
-            results = self.graph.query(direct_query, params={"terms": [t.lower() for t in term_strings]})
+            raw_results = self.graph.query(direct_query, {"terms": term_strings})
+            logger.info(f"DEBUG: Combined direct query returned {len(raw_results)} total results")
             
-            # Add direct match concepts
-            for result in results:
-                # Find which term this matched with
-                matching_term = None
-                for term in terms:
-                    if (term["term"].lower() in result["term"].lower() or 
-                        result["term"].lower() in term["term"].lower()):
-                        matching_term = term["term"]
-                        break
+            # Process and add direct match concepts
+            for i, result in enumerate(raw_results):
+                logger.info(f"DEBUG: Processing direct match result {i}: {result.get('cui', 'None')} - '{result.get('term', 'None')}'")
                 
-                concepts.append({
-                    "cui": result["cui"],
-                    "term": result["term"],
+                # Check which term(s) this matched with
+                matched_with = []
+                for term_str in term_strings:
+                    if term_str.lower() in result.get("term", "").lower() or result.get("term", "").lower() in term_str.lower():
+                        matched_with.append(term_str)
+                
+                logger.info(f"DEBUG:   Matched with terms: {matched_with}")
+                
+                concept_data = {
+                    "cui": result.get("cui", ""),
+                    "term": result.get("term", ""),
                     "definition": result.get("definition", "No definition available"),
-                    "labels": result.get("labels", []),
+                    "labels": result.get("labels", ["Concept"]),
                     "match_type": "direct_match",
                     "vector_match": False,
                     "confidence": 1.0,
-                    "original_term": matching_term  # Add this line
-                })
+                    "original_term": term_dict.get(matched_with[0] if matched_with else "", "Unknown")
+                }
+                concepts.append(concept_data)
         
         # IMPROVEMENT 2: Special handling for medication terms
         medication_terms = [term["term"].lower() for term in terms if term.get("type") == "Drug"]
         if medication_terms:
-            logger.info(f"Looking up medication terms: {medication_terms}")
+            logger.info("DEBUG: ===== EXECUTING MEDICATION MATCHING QUERY =====")
+            logger.info(f"DEBUG: Medication terms: {medication_terms}")
+            
+            # Debug each medication term individually
+            for i, med_term in enumerate(medication_terms):
+                debug_med_query = """
+                MATCH (c:Concept) 
+                WHERE toLower(c.term) = toLower($term) OR toLower(c.term) CONTAINS toLower($term)
+                OPTIONAL MATCH (c)-[:HAS_DEFINITION]->(d)
+                RETURN c.cui as cui, c.term as term, d.text as definition,
+                    labels(c) as labels
+                LIMIT 5
+                """
+                debug_med_results = self.graph.query(debug_med_query, {"term": med_term})
+                logger.info(f"DEBUG: Medication query results for '{med_term}': {len(debug_med_results)} matches")
+                for j, result in enumerate(debug_med_results[:5]):
+                    logger.info(f"DEBUG:   Med Result {j}: CUI={result.get('cui', 'None')}, Term='{result.get('term', 'None')}'")
+            
+            # Execute combined medication query
             direct_med_query = """
             MATCH (c:Concept) 
             WHERE toLower(c.term) IN $terms OR
-                  ANY(t IN $terms WHERE toLower(c.term) CONTAINS toLower(t))
+                ANY(t IN $terms WHERE toLower(c.term) CONTAINS toLower(t))
             OPTIONAL MATCH (c)-[:HAS_DEFINITION]->(d)
             RETURN c.cui as cui, c.term as term, d.text as definition,
-                   labels(c) as labels
+                labels(c) as labels
             """
             
             results = self.graph.query(direct_med_query, params={"terms": medication_terms})
+            logger.info(f"DEBUG: Combined medication query returned {len(results)} total results")
             
             # Add medication concepts with high confidence
-            for result in results:
-                # Avoid duplicates
-                if not any(c.get("cui") == result["cui"] for c in concepts):
-                    concepts.append({
-                        "cui": result["cui"],
-                        "term": result["term"],
-                        "definition": result.get("definition", "No definition available"),
-                        "labels": result.get("labels", []),
-                        "match_type": "med_match",
-                        "vector_match": False,
-                        "confidence": 1.0
-                    })
+            med_concepts_added = 0
+            for i, result in enumerate(results):
+                logger.info(f"DEBUG: Processing medication result {i}: {result.get('cui', 'None')} - '{result.get('term', 'None')}'")
+                
+                # Find which term this matched with
+                matching_term = None
+                for term in terms:
+                    if term.get("type") == "Drug" and (term.get("term", "").lower() in result.get("term", "").lower() or 
+                                            result.get("term", "").lower() in term.get("term", "").lower()):
+                        matching_term = term.get("term", "")
+                        break
+                
+                logger.info(f"DEBUG:   Matched with medication term: {matching_term}")
+                
+                if matching_term:
+                    # Avoid duplicates
+                    is_duplicate = any(c.get("cui") == result.get("cui", "") for c in concepts)
+                    if is_duplicate:
+                        logger.info(f"DEBUG:   Skipping duplicate medication concept: {result.get('cui', 'None')}")
+                    else:
+                        concepts.append({
+                            "cui": result.get("cui", ""),
+                            "term": result.get("term", ""),
+                            "definition": result.get("definition", "No definition available"),
+                            "labels": result.get("labels", []),
+                            "match_type": "med_match",
+                            "vector_match": False,
+                            "confidence": 1.0,
+                            "original_term": matching_term
+                        })
+                        med_concepts_added += 1
+            
+            logger.info(f"DEBUG: Added {med_concepts_added} medication concepts")
         
         # IMPROVEMENT 3: Vector search with lower threshold
         # Lower the threshold from default 0.3 to 0.2
         vector_search_threshold = self.settings.get("vector_search_threshold", 0.3)
         improved_threshold = max(0.2, vector_search_threshold * 0.8)  # Lower by 20% but not below 0.2
+        logger.info(f"DEBUG: Vector search threshold: {improved_threshold} (original: {vector_search_threshold})")
         
         # Get concept terms from the graph for vector matching
-        if self.settings.get("vector_search_enabled", True):
+        if self.settings.get("vector_searchEnabled", True):
+            logger.info("DEBUG: ===== EXECUTING VECTOR SIMILARITY SEARCH =====")
+            
             # Get all concept terms from the graph (limited for performance)
             concept_query = """
             MATCH (c:Concept)
             OPTIONAL MATCH (c)-[:HAS_DEFINITION]->(d)
-            RETURN c.cui as cui, c.term as term, d.text as definition
+            RETURN c.cui as cui, c.term as term, d.text as definition, c.embedding as embedding
             LIMIT 10000
             """
             concept_data = self.graph.query(concept_query)
             concept_terms = [c["term"] for c in concept_data if c.get("term")]
+            logger.info(f"DEBUG: Retrieved {len(concept_data)} concepts with embeddings for vector matching")
             
             # Perform vector similarity search for each term
-            for term in terms:
+            vector_concepts_added = 0
+            for i, term in enumerate(terms):
                 term_text = term.get("term", "").strip()
                 if not term_text or len(term_text) < 3:
+                    logger.info(f"DEBUG: Skipping term '{term_text}' (too short or empty)")
                     continue
-                    
+                
+                logger.info(f"DEBUG: Executing vector search for term {i}: '{term_text}'")
                 similar_concepts = self.vector_similarity_search(
                     term_text, concept_terms, concept_data
                 )
                 
+                logger.info(f"DEBUG: Vector search returned {len(similar_concepts)} similar concepts for '{term_text}'")
+                # Log top 5 matches
+                for j, concept in enumerate(similar_concepts[:5]):
+                    logger.info(f"DEBUG:   Vector match {j}: CUI={concept.get('cui', 'None')}, Term='{concept.get('term', 'None')}', Score={concept.get('score', 0)}")
+                
                 # Filter by improved threshold and add to concepts list
+                concepts_added_for_term = 0
                 for concept in similar_concepts:
                     # Skip if score is below improved threshold
                     if concept.get("score", 0) < improved_threshold:
                         continue
                     
                     # Skip if already in concepts list
-                    if any(c.get("cui") == concept.get("cui") for c in concepts):
+                    is_duplicate = any(c.get("cui") == concept.get("cui") for c in concepts)
+                    if is_duplicate:
                         continue
                     
                     # Add to concepts list
@@ -383,10 +510,17 @@ class KnowledgeGraphEvaluator:
                         "match_type": "vector_match",
                         "confidence": concept.get("score", 0),
                         "source_term": term_text,
-                        "original_term": term_text  # Add this line
+                        "original_term": term_text
                     })
+                    concepts_added_for_term += 1
+                    vector_concepts_added += 1
+                
+                logger.info(f"DEBUG: Added {concepts_added_for_term} vector-matched concepts for term '{term_text}'")
+            
+            logger.info(f"DEBUG: Added {vector_concepts_added} total vector-matched concepts")
         
         # Deduplicate concepts based on CUI
+        pre_dedup_count = len(concepts)
         unique_concepts = {}
         for concept in concepts:
             cui = concept.get("cui")
@@ -395,21 +529,22 @@ class KnowledgeGraphEvaluator:
                 if cui not in unique_concepts or concept.get("confidence", 0) > unique_concepts[cui].get("confidence", 0):
                     unique_concepts[cui] = concept
         
-        # IMPROVEMENT 4: Log missing concepts
-        found_terms = set(c.get('term', '').lower() for c in unique_concepts.values())
-        term_texts = [t.get('term', '').lower() for t in terms]
-        missing_terms = [t['term'] for t in terms if t['term'].lower() not in found_terms 
-                        and len(t['term']) > 2]  # Skip very short terms
-                        
+        logger.info(f"DEBUG: Deduplication: {pre_dedup_count} concepts → {len(unique_concepts)} unique concepts")
+        
+        # Determine missing terms
+        input_terms = {t['term'] for t in terms}
+        matched_terms = set(c.get('original_term', '') for c in unique_concepts.values() if c.get('original_term'))
+        missing_terms = [t['term'] for t in terms if t['term'] not in matched_terms and len(t['term']) > 2]
+        
         if missing_terms:
             logger.warning(f"Could not find concepts for terms: {', '.join(missing_terms)}")
-            
+        
         # Log success statistics
         logger.info(f"Found {len(unique_concepts)} unique concepts from {len(terms)} terms")
         
         # Return the list of unique concepts
         return list(unique_concepts.values())
-            
+
     def get_relationships(self, concepts: List[Dict]) -> List[Dict]:
         """Get all relationships between found concepts without filtering by relationship type"""
         try:
@@ -481,7 +616,12 @@ class KnowledgeGraphEvaluator:
                         start.term as source_term,
                         end.cui as target_cui,
                         end.term as target_term,
-                        [node in nodes | {{cui: node.cui, term: node.term}}] as path_nodes,
+                        [node in nodes | {{
+                            cui: node.cui, 
+                            term: node.term,
+                            semantic_type: node.semantic_type,
+                            labels: labels(node)
+                        }}] as path_nodes,
                         [rel in rels | {{type: type(rel)}}] as path_rels,
                         length(path) as path_length
                     """
@@ -502,8 +642,22 @@ class KnowledgeGraphEvaluator:
                     
                     for i in range(len(rels)):
                         rel_type = rels[i]['type']
-                        next_node = nodes[i+1]['term'] if i+1 < len(nodes) else "Unknown"
-                        path_description.append(f"-[{rel_type}]->({next_node})")
+                        next_node = nodes[i+1] if i+1 < len(nodes) else {}
+                        
+                        # Get appropriate label based on node type
+                        node_label = "Unknown"
+                        
+                        # First try term for Concept nodes
+                        if 'term' in next_node and next_node['term']:
+                            node_label = next_node['term']
+                        # Then try semantic_type for SemanticType nodes
+                        elif 'semantic_type' in next_node and next_node['semantic_type']:
+                            node_label = next_node['semantic_type']
+                        # Fallback to labels as a hint for debugging
+                        elif 'labels' in next_node and next_node['labels']:
+                            node_label = f"Unknown:{','.join(next_node['labels'])}"
+                        
+                        path_description.append(f"-[{rel_type}]->({node_label})")
                     
                     formatted_paths.append({
                         'source_term': path['source_term'],
@@ -521,7 +675,6 @@ class KnowledgeGraphEvaluator:
         except Exception as e:
             logger.error(f"Error finding multihop paths: {str(e)}")
             return []
-
     def format_kg_data(self, concepts: List[Dict], relationships: List[Dict], multihop_paths: List[Dict] = None) -> Dict:
         """Format KG data with IDs for citation tracking"""
         formatted_data = {
@@ -806,103 +959,162 @@ class KnowledgeGraphEvaluator:
         
         # Create improved prompt for quality
         prompt = f"""
-        As a medical expert, answer this question by integrating knowledge graph data with your medical expertise:
         
-        QUESTION: {question}
+
         
-        KNOWLEDGE GRAPH DATA:
-        {concise_kg_data}
-        
-        Instructions:
-        1. Prioritize information from the knowledge graph, particularly relationship data
-        2. When referencing specific medical facts from the knowledge graph, use language like:
-           - "Medical literature indicates [specific fact from KG]"
-           - "According to clinical data [specific fact from KG]"
-           - "Research shows that [specific relationship from KG]"
-        3. Clearly distinguish between knowledge graph information and your general medical knowledge
-        4. For any critical claim, identify the specific knowledge source
-        5. Structure your response with a direct answer, explanation, and clinical context
-        
-        Provide a well-structured, evidence-based answer that seamlessly integrates
-        the knowledge graph data with your medical expertise.
+            You are a medical expert answering clinical questions. Your response must mimic a clinician's thinking process, integrating evidence from the knowledge graph with your medical expertise to provide a well-structured, evidence-based answer.
+                    QUESTION: {question}
+                    
+                    KNOWLEDGE GRAPH DATA:
+                    {concise_kg_data}
+            Instructions:
+
+            1. Assess the Context:
+
+                -First, evaluate whether the knowledge graph data provided is sufficient to answer the question.
+
+                -If critical information is missing, use your internal medical knowledge to fill the gaps. Clearly state when you are doing so.
+
+            2. Structure Your Response:
+
+                -Direct Answer: Start with a concise, direct answer to the question.
+
+                -Explanation: Provide a detailed explanation of your reasoning, integrating evidence from the knowledge graph and your medical expertise.
+
+                -Clinical Context: Place the answer in a clinical context, explaining how it applies to the patient's presentation.
+
+                -Differential Diagnosis: If applicable, briefly discuss alternative diagnoses and explain why they are less likely.
+
+                -Management Considerations: Suggest next steps for diagnosis or management, if relevant.
+
+            3. Integrate Knowledge Graph Data:
+
+                -Prioritize information from the knowledge graph, especially relationship data.
+
+                -When referencing specific facts or relationships from the knowledge graph, use language like:
+
+                "Medical literature indicates [specific fact from KG]."
+
+                "According to clinical data [specific fact from KG]."
+
+                "Research shows that [specific relationship from KG]."
+
+            4. Distinguish Between Sources:
+
+                -Clearly differentiate between information derived from the knowledge graph and your internal medical knowledge.
+
+                -For any critical claim, identify the specific knowledge source (e.g., knowledge graph, medical guidelines, or your expertise).
+
+            5. Mimic Clinicians Thinking Process:
+
+                -Begin with the most likely diagnosis or answer based on the evidence.
+
+                -Rule out alternative explanations systematically.
+
+                -Consider the patient history, physical examination, and laboratory findings in your reasoning.
+
+                -Acknowledge limitations or missing information that could affect the diagnosis or management.
         """
         
         return self.llm(prompt)
     
     def evaluate_citation_quality(self, answer: str, kg_data: Dict) -> Dict:
-        """Enhanced evaluation of citation quality and accuracy"""
-        
+        import logging
+        import re
+        import json
+
+        # Set up logging (assuming logger is configured elsewhere; adjust as needed)
+        logger = logging.getLogger(__name__)
+
+        # Ensure all concepts have an 'id'
+        for idx, concept in enumerate(kg_data.get("concepts", []), start=1):
+            if "id" not in concept:
+                concept["id"] = f"C{idx}"
+                logger.warning(f"Assigned default id {concept['id']} to concept: {concept}")
+
+        # Ensure all relationships have an 'id'
+        for idx, rel in enumerate(kg_data.get("relationships", []), start=1):
+            if "id" not in rel:
+                rel["id"] = f"R{idx}"
+                logger.warning(f"Assigned default id {rel['id']} to relationship: {rel}")
+
+        # Ensure all multihop paths have an 'id'
+        for idx, path in enumerate(kg_data.get("multihop_paths", []), start=1):
+            if "id" not in path:
+                path["id"] = f"P{idx}"
+                logger.warning(f"Assigned default id {path['id']} to multihop path: {path}")
+
         # Use the last stored KG data if not provided
         if not kg_data and hasattr(self, '_last_kg_data'):
             kg_data = self._last_kg_data
-        
+
         # Extract all citations from the answer
         citation_pattern = r'\b([CRP]\d+)\b'
         citations_used = re.findall(citation_pattern, answer)
-        
+
         # Create maps for quick lookup
         concept_map = {c["id"]: c for c in kg_data.get("concepts", [])}
         relationship_map = {r["id"]: r for r in kg_data.get("relationships", [])}
         path_map = {p["id"]: p for p in kg_data.get("multihop_paths", [])}
-        
+
         # Count valid vs. invalid citations
-        valid_citations = [c for c in citations_used if 
-                          (c.startswith('C') and c in concept_map) or
-                          (c.startswith('R') and c in relationship_map) or
-                          (c.startswith('P') and c in path_map)]
-        
+        valid_citations = [c for c in citations_used if
+                        (c.startswith('C') and c in concept_map) or
+                        (c.startswith('R') and c in relationship_map) or
+                        (c.startswith('P') and c in path_map)]
+
         invalid_citations = [c for c in citations_used if c not in valid_citations]
-        
+
         # Calculate citation statistics
         citation_stats = {
             "total_citations_used": len(citations_used),
             "valid_citations": len(valid_citations),
             "invalid_citations": len(invalid_citations),
             "validity_ratio": len(valid_citations) / max(len(citations_used), 1) * 100,
-            "citation_density": len(citations_used) / (len(answer.split()) / 100) # citations per 100 words
+            "citation_density": len(citations_used) / (len(answer.split()) / 100)  # citations per 100 words
         }
-        
+
         # Prepare data for LLM evaluation
         concise_kg_data = self.format_kg_data_for_prompt(
             kg_data.get("concepts", []),
             kg_data.get("relationships", []),
             kg_data.get("multihop_paths", [])
         )
-        
+
         # Enhanced LLM prompt for citation quality assessment
         prompt = f"""
         Evaluate the citation quality in this medical answer:
-        
-        Answer with citations: 
+
+        Answer with citations:
         {answer}
-        
+
         Citation Statistics:
         - Total citations: {citation_stats['total_citations_used']}
         - Valid citations: {citation_stats['valid_citations']}
         - Invalid citations: {citation_stats['invalid_citations']}
         - Citation density: {citation_stats['citation_density']:.2f} per 100 words
-        
+
         Knowledge Graph Data that was available:
         {concise_kg_data}
-        
+
         Please analyze:
         1. Are claims properly supported by relevant citations?
         2. Are the citations used in a way that shows understanding of the medical connections?
         3. Does each major claim have a citation?
         4. Are unsupported claims clearly marked as limitations?
-        
+
         Return a JSON with:
         {{
-          "total_claims": number,
-          "cited_claims": number,
-          "accurate_citations": number (citations that actually support the claim),
-          "citation_accuracy": percentage,
-          "unsupported_claims": number,
-          "citation_quality_score": 0-10,
-          "reasoning": "explanation of the score"
+        "total_claims": number,
+        "cited_claims": number,
+        "accurate_citations": number (citations that actually support the claim),
+        "citation_accuracy": percentage,
+        "unsupported_claims": number,
+        "citation_quality_score": 0-10,
+        "reasoning": "explanation of the score"
         }}
         """
-        
+
         response = self.llm(prompt)
         try:
             # Fix JSON extraction with proper regex pattern
@@ -910,15 +1122,12 @@ class KnowledgeGraphEvaluator:
             if json_match:
                 json_text = json_match.group(1)
             elif "```json" in response:
-                # Try to extract from code blocks
                 json_text = response.split("```json")[1].split("```")[0].strip()
             elif "```" in response:
-                # Fallback to any code block
                 json_text = response.split("```")[1].split("```")[0].strip()
             else:
-                # Just use the response as is
                 json_text = response.strip()
-            
+
             return json.loads(json_text)
         except Exception as e:
             logger.error(f"Error parsing citation evaluation: {str(e)}")
@@ -931,62 +1140,6 @@ class KnowledgeGraphEvaluator:
                 "citation_quality_score": 0,
                 "reasoning": f"Error parsing: {str(e)}"
             }
-    
-    def evaluate_kg_contribution(self, kg_answer: str, llm_only_answer: str) -> Dict:
-        """Evaluate how much the KG contributed beyond the LLM's knowledge"""
-        prompt = f"""
-        Compare these two answers to the same medical question:
-        
-        Answer 1 (Using Knowledge Graph):
-        {kg_answer}
-        
-        Answer 2 (Without Knowledge Graph):
-        {llm_only_answer}
-        
-        Analyze how the knowledge graph contributed:
-        1. What unique information is in Answer 1 that's not in Answer 2?
-        2. How did the knowledge graph improve accuracy, detail, or specificity?
-        3. Were there cases where the knowledge graph corrected potential errors?
-        4. Quantify the overall value added by the knowledge graph.
-        
-        Return a JSON with:
-        {{
-          "unique_information": [list of unique facts from KG],
-          "improved_aspects": [areas where KG improved the answer],
-          "corrections": [potential errors avoided],
-          "value_added_score": 0-10 (where 0=no value, 10=transformative),
-          "detailed_assessment": "text explanation"
-        }}
-        """
-        
-        response = self.llm(prompt)
-        try:
-            # Fix JSON extraction with proper regex pattern
-            json_match = re.search(r'({.*?})(?:\s*$|\n)', response, re.DOTALL)
-            if json_match:
-                json_text = json_match.group(1)
-            elif "```json" in response:
-                # Try to extract from code blocks
-                json_text = response.split("```json")[1].split("```")[0].strip()
-            elif "```" in response:
-                # Fallback to any code block
-                json_text = response.split("```")[1].split("```")[0].strip()
-            else:
-                # Just use the response as is
-                json_text = response.strip()
-                
-            return json.loads(json_text)
-        except Exception as e:
-            logger.error(f"Error parsing KG contribution evaluation: {str(e)}")
-            return {
-                "unique_information": [],
-                "improved_aspects": [],
-                "corrections": [],
-                "value_added_score": 0,
-                "detailed_assessment": f"Error parsing: {str(e)}",
-                "error": str(e)
-            }
-    
     def evaluate_kg_coverage(self, question: str, extracted_terms: List[Dict], concepts: List[Dict]) -> Dict:
         """Evaluate how well the KG covers the terms needed for the question"""
         # Calculate term coverage
@@ -1751,6 +1904,259 @@ class KnowledgeGraphEvaluator:
         correctness_metrics = self.evaluate_correctness(answer, question_dict)
         
         return self.calculate_evidence_based_score(evidence_metrics, correctness_metrics)
+
+    def rerank_concepts(self, concepts: List[Dict], question: str) -> List[Dict]:
+        """Re-rank concepts based on relevance to the question"""
+        if not concepts:
+            return []
+            
+        # Save original ranking
+        before_ranking = list(concepts)  # Create a copy
+        
+        # Calculate relevance scores
+        for concept in concepts:
+            concept_text = f"{concept['term']} - {concept['definition']}"
+            similarity = self.calculate_semantic_similarity(concept_text, question)
+            
+            original_conf = concept.get('confidence', 0.5)
+            concept['relevance_score'] = similarity
+            concept['confidence'] = 0.3 * original_conf + 0.7 * similarity
+        
+        # Sort by combined confidence
+        reranked = sorted(concepts, key=lambda x: x.get('confidence', 0), reverse=True)
+        reranked = reranked[:self.settings.get("top_k_concepts", 50)]
+        
+        # Display the comparison
+        self.show_ranking_comparison(before_ranking, reranked, 'concepts')
+        
+        return reranked
+
+    def rerank_relationships(self, relationships: List[Dict], question: str, concepts: List[Dict]) -> List[Dict]:
+        """Re-rank relationships based on relevance to the question"""
+        if not relationships:
+            return []
+        
+        # Save original ranking
+        before_ranking = list(relationships)  # Create a copy
+        
+        # Calculate concept relevance dict for quick lookup
+        concept_relevance = {c.get('cui'): c.get('confidence', 0) for c in concepts}
+        
+        for rel in relationships:
+            source_cui = rel.get('source_cui')
+            target_cui = rel.get('target_cui')
+            source_relevance = concept_relevance.get(source_cui, 0)
+            target_relevance = concept_relevance.get(target_cui, 0)
+            
+            rel_statement = f"{rel.get('source_name')} {rel.get('relationship_type')} {rel.get('target_name')}"
+            semantic_relevance = self.calculate_semantic_similarity(rel_statement, question)
+            
+            rel['relevance_score'] = (
+                0.4 * semantic_relevance +
+                0.3 * source_relevance +
+                0.3 * target_relevance
+            )
+        
+        # Sort by relevance score
+        reranked = sorted(relationships, key=lambda x: x.get('relevance_score', 0), reverse=True)
+        reranked = reranked[:self.settings.get("top_k_relationships", 100)]
+        
+        # Display the comparison
+        self.show_ranking_comparison(before_ranking, reranked, 'relationships')
+        
+        return reranked
+
+    def rerank_paths(self, paths: List[Dict], question: str) -> List[Dict]:
+        """Re-rank multihop paths based on relevance to the question"""
+        if not paths:
+            return []
+        
+        # Save original ranking
+        before_ranking = list(paths)  # Create a copy
+        
+        for path in paths:
+            path_text = path.get('path_description', '')
+            
+            path_relevance = self.calculate_semantic_similarity(path_text, question)
+            
+            path_length = path.get('path_length', 10)
+            length_penalty = max(0, 1 - (path_length - 1) * 0.1)
+            
+            path['relevance_score'] = 0.8 * path_relevance + 0.2 * length_penalty
+        
+        # Sort by relevance score
+        reranked = sorted(paths, key=lambda x: x.get('relevance_score', 0), reverse=True)
+        reranked = reranked[:30]
+        
+        # Display the comparison
+        self.show_ranking_comparison(before_ranking, reranked, 'paths')
+        
+        return reranked
+
+    def calculate_semantic_similarity(self, text1: str, text2: str) -> float:
+        """Calculate semantic similarity between two texts"""
+        try:
+            if not self.embedding_model:
+                logger.warning("No embedding model available for semantic similarity")
+                return 0.5  # Default similarity score
+                
+            # Use the SentenceTransformer model
+            embedding1 = self.embedding_model.encode(text1[:512], convert_to_tensor=False)
+            embedding2 = self.embedding_model.encode(text2[:512], convert_to_tensor=False)
+            
+            # Calculate cosine similarity
+            similarity = self.cosine_similarity(embedding1, embedding2)
+            return similarity
+        except Exception as e:
+            logger.error(f"Error calculating similarity: {str(e)}")
+            return 0.5  # Default similarity score on error
+        
+    def cosine_similarity(self, vec1, vec2):
+        """Calculate cosine similarity between two vectors"""
+        dot_product = sum(a * b for a, b in zip(vec1, vec2))
+        norm_a = sum(a * a for a in vec1) ** 0.5
+        norm_b = sum(b * b for b in vec2) ** 0.5
+        return dot_product / (norm_a * norm_b) if norm_a > 0 and norm_b > 0 else 0
+
+    # Add this utility function to show ranking differences
+    def show_ranking_comparison(self, before_items, after_items, item_type='concepts', limit=10):
+        """Display items before and after re-ranking for comparison"""
+        print(f"\n{'='*30} {item_type.upper()} RANKING COMPARISON {'='*30}")
+        
+        # Format for different item types
+        if item_type == 'concepts':
+            before_display = [(i, c.get('term', 'Unknown'), c.get('confidence', 0)) 
+                              for i, c in enumerate(before_items[:limit])]
+            after_display = [(i, c.get('term', 'Unknown'), c.get('confidence', 0), 
+                              f"{c.get('relevance_score', 0):.3f}")
+                             for i, c in enumerate(after_items[:limit])]
+            
+            print("\nBEFORE RE-RANKING:")
+            print(f"{'#':3} | {'Term':40} | {'Conf':5}")
+            print("-" * 55)
+            for idx, term, conf in before_display:
+                print(f"{idx:3} | {term[:40]:40} | {conf:.3f}")
+            
+            print("\nAFTER RE-RANKING:")
+            print(f"{'#':3} | {'Term':40} | {'Conf':5} | {'Rel':5}")
+            print("-" * 65)
+            for idx, term, conf, rel in after_display:
+                print(f"{idx:3} | {term[:40]:40} | {conf:.3f} | {rel}")
+            
+        elif item_type == 'relationships':
+            before_display = [(i, f"{r.get('source_name', '?')} → {r.get('relationship_type', '?')} → {r.get('target_name', '?')}")
+                              for i, r in enumerate(before_items[:limit])]
+            
+            after_display = [(i, f"{r.get('source_name', '?')} → {r.get('relationship_type', '?')} → {r.get('target_name', '?')}", 
+                              f"{r.get('relevance_score', 0):.3f}")
+                             for i, r in enumerate(after_items[:limit])]
+            
+            print("\nBEFORE RE-RANKING:")
+            print(f"{'#':3} | {'Relationship':80}")
+            print("-" * 85)
+            for idx, rel in before_display:
+                print(f"{idx:3} | {rel[:80]}")
+            
+            print("\nAFTER RE-RANKING:")
+            print(f"{'#':3} | {'Relationship':80} | {'Score':5}")
+            print("-" * 95)
+            for idx, rel, score in after_display:
+                print(f"{idx:3} | {rel[:80]:80} | {score}")
+            
+        elif item_type == 'paths':
+            before_display = [(i, p.get('path_description', 'Unknown')[:70], p.get('path_length', 0)) 
+                              for i, p in enumerate(before_items[:limit])]
+            
+            after_display = [(i, p.get('path_description', 'Unknown')[:70], 
+                              p.get('path_length', 0), f"{p.get('relevance_score', 0):.3f}") 
+                             for i, p in enumerate(after_items[:limit])]
+            
+            print("\nBEFORE RE-RANKING:")
+            print(f"{'#':3} | {'Path Description':70} | {'Len':3}")
+            print("-" * 80)
+            for idx, desc, length in before_display:
+                print(f"{idx:3} | {desc:70} | {length:3}")
+            
+            print("\nAFTER RE-RANKING:")
+            print(f"{'#':3} | {'Path Description':70} | {'Len':3} | {'Score':5}")
+            print("-" * 90)
+            for idx, desc, length, score in after_display:
+                print(f"{idx:3} | {desc:70} | {length:3} | {score}")
+            
+        print(f"{'='*80}\n")
+
+    def evaluate_kg_contribution(self, answer_with_context: str, answer_without_context: str) -> Dict:
+        """Evaluate how much the knowledge graph context contributed to the answer"""
+        
+        prompt = f"""
+        Compare these two answers to the same medical question:
+        
+        ANSWER WITH CONTEXT:
+        {answer_with_context}
+        
+        ANSWER WITHOUT CONTEXT:
+        {answer_without_context}
+        
+        Evaluate how the knowledge graph/context contributed to the first answer compared to the second.
+        
+        Return a JSON with:
+        {{
+          "additional_facts": [list of facts present in the first answer but not in the second],
+          "improved_reasoning": boolean (true if reasoning is more thorough),
+          "confidence_improvement": 0-10 (how much more confident the answer with context seems),
+          "information_richness": 0-10 (how much more informative the answer with context is),
+          "value_added_score": 0-10 (overall contribution of the context),
+          "specific_contributions": [list of specific ways the context improved the answer],
+          "analysis": "brief explanation of how context enhanced the answer"
+        }}
+        """
+        
+        response = self.llm(prompt)
+        
+        try:
+            # Extract the JSON from the response
+            if "```json" in response:
+                json_text = response.split("```json")[1].split("```")[0].strip()
+            elif "```" in response:
+                json_text = response.split("```")[1].split("```")[0].strip()
+            else:
+                # Try to extract using regex for JSON pattern
+                import re
+                json_match = re.search(r'({.*})', response, re.DOTALL)
+                if json_match:
+                    json_text = json_match.group(1)
+                else:
+                    json_text = response
+            
+            import json
+            result = json.loads(json_text)
+            
+            # Ensure the value_added_score key exists
+            if "contribution_score" in result and "value_added_score" not in result:
+                result["value_added_score"] = result["contribution_score"]
+            
+            # If no value_added_score exists, set a default based on other metrics
+            if "value_added_score" not in result:
+                info_richness = result.get("information_richness", 0)
+                confidence = result.get("confidence_improvement", 0)
+                result["value_added_score"] = (info_richness + confidence) / 2
+            
+            # Ensure score is in the right range
+            result["value_added_score"] = min(max(result["value_added_score"], 0), 10)
+            
+            return result
+        except Exception as e:
+            logger.error(f"Error parsing contribution evaluation: {str(e)}")
+            return {
+                "additional_facts": [],
+                "improved_reasoning": False,
+                "confidence_improvement": 0,
+                "information_richness": 0,
+                "value_added_score": 5.0,  # Default middle score
+                "contribution_score": 5.0,  # For backward compatibility
+                "specific_contributions": [],
+                "analysis": f"Error evaluating contribution: {str(e)}"
+            }
 
 def main():
     """Run the knowledge graph evaluation with optimized performance"""
