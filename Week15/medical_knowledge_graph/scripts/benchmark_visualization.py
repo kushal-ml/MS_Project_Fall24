@@ -5,6 +5,7 @@ import numpy as np
 import pandas as pd
 import seaborn as sns
 from matplotlib.colors import LinearSegmentedColormap
+from pathlib import Path
 
 def generate_benchmark_visualization(benchmark_results_path, output_dir=None):
     """
@@ -320,12 +321,146 @@ def generate_benchmark_visualization(benchmark_results_path, output_dir=None):
     print(f"Generated 7 enhanced visualization charts in {output_dir}")
     return output_dir
 
+def create_benchmark_visualizations(csv_path, output_dir):
+    """
+    Create visualizations from benchmark results CSV file
+    
+    Args:
+        csv_path: Path to the simplified_results.csv file
+        output_dir: Directory to save the visualization plots
+    """
+    # Create output directory if it doesn't exist
+    os.makedirs(output_dir, exist_ok=True)
+    
+    # Read the CSV file
+    df = pd.read_csv(csv_path)
+    
+    # 1. Performance Comparison Across Methods
+    plt.figure(figsize=(12, 6))
+    method_performance = df.groupby('Method')[['Evidence_Score_Raw', 'Correctness_Score_Raw', 'Total_Score']].mean()
+    
+    x = np.arange(len(method_performance.index))
+    width = 0.25
+    
+    plt.bar(x - width, method_performance['Evidence_Score_Raw'], width, label='Evidence Score', color='skyblue')
+    plt.bar(x, method_performance['Correctness_Score_Raw'], width, label='Correctness Score', color='lightgreen')
+    plt.bar(x + width, method_performance['Total_Score'], width, label='Total Score', color='coral')
+    
+    plt.xlabel('Method')
+    plt.ylabel('Score')
+    plt.title('Average Performance by Method')
+    plt.xticks(x, method_performance.index, rotation=45)
+    plt.legend()
+    plt.grid(True, alpha=0.3)
+    plt.tight_layout()
+    plt.savefig(os.path.join(output_dir, 'method_performance_comparison.png'))
+    plt.close()
+    
+    # 2. Success Rate by Method
+    plt.figure(figsize=(10, 6))
+    success_rate = df.groupby('Method')['Correctness_Score_Raw'].apply(lambda x: (x == 10.0).mean() * 100)
+    
+    plt.bar(success_rate.index, success_rate.values, color=['blue', 'green', 'red'])
+    plt.xlabel('Method')
+    plt.ylabel('Success Rate (%)')
+    plt.title('Answer Success Rate by Method')
+    plt.xticks(rotation=45)
+    
+    # Add percentage labels on top of bars
+    for i, v in enumerate(success_rate.values):
+        plt.text(i, v + 1, f'{v:.1f}%', ha='center')
+    
+    plt.grid(True, alpha=0.3)
+    plt.tight_layout()
+    plt.savefig(os.path.join(output_dir, 'success_rate_by_method.png'))
+    plt.close()
+    
+    # 3. Score Distribution
+    plt.figure(figsize=(12, 6))
+    sns.boxplot(data=df, x='Method', y='Total_Score')
+    plt.xlabel('Method')
+    plt.ylabel('Total Score')
+    plt.title('Score Distribution by Method')
+    plt.xticks(rotation=45)
+    plt.grid(True, alpha=0.3)
+    plt.tight_layout()
+    plt.savefig(os.path.join(output_dir, 'score_distribution.png'))
+    plt.close()
+    
+    # 4. Evidence vs Correctness Scatter Plot
+    plt.figure(figsize=(12, 6))
+    colors = {'LLM Only': 'blue', 'Context Strict': 'green', 'LLM Informed': 'red'}
+    
+    for method in df['Method'].unique():
+        method_data = df[df['Method'] == method]
+        plt.scatter(method_data['Evidence_Score_Raw'], 
+                   method_data['Correctness_Score_Raw'],
+                   label=method, 
+                   alpha=0.6,
+                   c=colors[method])
+    
+    plt.xlabel('Evidence Score')
+    plt.ylabel('Correctness Score')
+    plt.title('Evidence Score vs Correctness Score')
+    plt.legend()
+    plt.grid(True, alpha=0.3)
+    plt.tight_layout()
+    plt.savefig(os.path.join(output_dir, 'evidence_vs_correctness.png'))
+    plt.close()
+    
+    # 5. Performance Over Questions
+    plt.figure(figsize=(15, 6))
+    for method in df['Method'].unique():
+        method_data = df[df['Method'] == method]
+        plt.plot(method_data['Question_ID'], 
+                method_data['Total_Score'],
+                label=method,
+                marker='o',
+                alpha=0.7)
+    
+    plt.xlabel('Question ID')
+    plt.ylabel('Total Score')
+    plt.title('Performance Across Questions')
+    plt.legend()
+    plt.grid(True, alpha=0.3)
+    plt.tight_layout()
+    plt.savefig(os.path.join(output_dir, 'performance_across_questions.png'))
+    plt.close()
+    
+    # Generate summary statistics
+    summary = {
+        'total_questions': len(df['Question_ID'].unique()),
+        'method_performance': method_performance.to_dict(),
+        'success_rates': success_rate.to_dict()
+    }
+    
+    # Save summary as text file
+    with open(os.path.join(output_dir, 'visualization_summary.txt'), 'w') as f:
+        f.write("Benchmark Visualization Summary\n")
+        f.write("=============================\n\n")
+        f.write(f"Total Questions Analyzed: {summary['total_questions']}\n\n")
+        
+        f.write("Average Scores by Method:\n")
+        f.write("-------------------------\n")
+        for method in method_performance.index:
+            f.write(f"\n{method}:\n")
+            f.write(f"  Evidence Score: {method_performance.loc[method, 'Evidence_Score_Raw']:.2f}\n")
+            f.write(f"  Correctness Score: {method_performance.loc[method, 'Correctness_Score_Raw']:.2f}\n")
+            f.write(f"  Total Score: {method_performance.loc[method, 'Total_Score']:.2f}\n")
+            f.write(f"  Success Rate: {success_rate[method]:.1f}%\n")
+    
+    return summary
+
 # Example usage
 if __name__ == "__main__":
-    benchmark_results_path = "usmle_evaluation_results/benchmark/benchmark_results.json"
+    # Default paths 
+    print(os.getcwd())
+    csv_path = "usmle_evaluation_results/benchmark/simplified_results.csv"
     output_dir = "usmle_evaluation_results/benchmark/visualizations"
     
-    if os.path.exists(benchmark_results_path):
-        generate_benchmark_visualization(benchmark_results_path, output_dir)
-    else:
-        print(f"Benchmark results file not found at {benchmark_results_path}")
+    # Create visualizations
+    try:
+        summary = create_benchmark_visualizations(csv_path, output_dir)
+        print(f"Visualizations created successfully in {output_dir}")
+    except Exception as e:
+        print(f"Error creating visualizations: {str(e)}")
