@@ -198,7 +198,7 @@ class USMLEProcessor:
         **2. EVIDENCE INTEGRATION:**
         - Knowledge Graph Concepts: Cite specific concept IDs (e.g., "C0027051: Myocardial Infarction") and its definition if you use it.
         - Knowledge Graph Relationships: List ALL relevant relationships in the format "concept_1 → relationship_type → concept_2"
-        - Knowledge Graph Paths: - Identify any multi-step paths from the given evidence that help link the clinical finding to the answer.Use the path in your chain-of-thought reasoning.
+        - Knowledge Graph Paths: - Identify any potential multi-step paths from the given evidence that help link the clinical finding to the answer. Explicitly cite the terms and relationships that you use from the evidence to form the multi-hop path. Use the path in your chain-of-thought reasoning.
         - Textbook Evidence: Quote EXACT text phrases with citation
         - Utilize multihop paths if necessary to answer the question
         - Your Expertise: ONLY if evidence is missing, clearly state "Based on medical knowledge not in the provided evidence..."
@@ -257,7 +257,7 @@ RESPONSE FORMAT:
         **2. EVIDENCE INTEGRATION:**
         - Knowledge Graph Concepts: Cite specific concept IDs (e.g., "C0027051: Myocardial Infarction") and its definition if you use it.
         - Knowledge Graph Relationships: List ALL relevant relationships in the format "concept_1 → relationship_type → concept_2"
-        - Knowledge Graph Paths: - Identify any multi-step paths from the given evidence that help link the clinical finding to the answer.Use the path in your chain-of-thought reasoning.
+        - Knowledge Graph Paths: - Identify any potential multi-step paths from the given evidence that help link the clinical finding to the answer. Explicitly cite the terms and relationships that you use from the evidence to form the multi-hop path. Use the path in your chain-of-thought reasoning.
         - Textbook Evidence: Quote EXACT text phrases with citation
         - Utilize multihop paths if necessary to answer the question
         - Your Expertise: ONLY if evidence is missing, clearly state "Based on medical knowledge not in the provided evidence..."

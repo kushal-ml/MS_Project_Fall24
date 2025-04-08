@@ -38,6 +38,7 @@ Week14/medical_knowledge_graph/src/.DS_Store
 # Keep directory structure
 !Week14/medical_knowledge_graph/data/raw/umls/.gitkeep
 !Week14/medical_knowledge_graph/data/processed/.gitkeep
+Week15/medical_knowledge_graph/lib/
 
 # Distribution / packaging
 dist/
