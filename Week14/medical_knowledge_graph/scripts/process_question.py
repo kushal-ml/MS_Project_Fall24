@@ -389,15 +389,18 @@ class MedicalQuestionProcessor:
             
             # Generate answer using only Neo4j data
             answer = self._generate_answer(question, concepts, relationships)
+            logger.info("Generated answer from LLM")
             
+            # Return properly formatted response with answer as string
             return {
-                'answer': answer,
-                'concepts': concepts,
-                'relationships': relationships
+                'answer': str(answer),  # Ensure answer is treated as string
+                'key_terms': [term['term'] for term in key_terms] if key_terms else [],
+                'concepts': concepts if concepts else [],
+                'relationships': relationships if relationships else []
             }
             
         except Exception as e:
-            logger.error(f"Error processing question: {str(e)}")
+            logger.error(f"Error in UMLS processing: {str(e)}")
             return {'error': str(e)}
 
     def _extract_key_terms(self, question: str) -> List[Dict]:
@@ -530,166 +533,299 @@ class MedicalQuestionProcessor:
         """Get relationships between concepts based on node types"""
         try:
             if not concepts:
+                logger.info("No concepts provided to find relationships")
                 return []
                 
             # Get CUIs from found concepts
             cuis = [concept['cui'] for concept in concepts if 'cui' in concept]
+            logger.info(f"Searching relationships for CUIs: {cuis}")
             
-            # First, get RELATES_TO relationships for all concepts
-            relates_query = """
-            MATCH (c1)-[r:RELATES_TO]-(c2)
+            # More comprehensive relationship query
+            query = """
+            // Direct relationships (outgoing)
+            MATCH (c1)-[r1]->(c2)
             WHERE c1.cui IN $cuis
-            RETURN DISTINCT
-                'RELATES_TO' as relationship_type,
-                c1.cui as source_cui,
-                c1.term as source_name,
-                c2.cui as target_cui,
-                c2.term as target_name,
-                labels(c1)[0] as source_type,
-                labels(c2)[0] as target_type
+            WITH COLLECT({
+                relationship_type: type(r1),
+                direction: 'outgoing',
+                source_cui: c1.cui,
+                source_name: c1.term,
+                target_cui: c2.cui,
+                target_name: CASE 
+                    WHEN type(r1) = 'HAS_SEMANTIC_TYPE' THEN c2.semantic_type
+                    WHEN type(r1) = 'HAS_DEFINITION' THEN c2.term
+                    ELSE c2.term
+                END,
+                source_labels: labels(c1),
+                target_labels: labels(c2)
+            }) as outgoing
+
+            // Direct relationships (incoming)
+            MATCH (c2)-[r2]->(c1)
+            WHERE c1.cui IN $cuis
+            WITH outgoing, COLLECT({
+                relationship_type: type(r2),
+                direction: 'incoming',
+                source_cui: c2.cui,
+                source_name: c2.term,
+                target_cui: c1.cui,
+                target_name: c1.term,
+                source_labels: labels(c2),
+                target_labels: labels(c1)
+            }) as incoming
+
+            // Bidirectional relationships between found concepts
+            MATCH (c1)-[r3]-(c2)
+            WHERE c1.cui IN $cuis AND c2.cui IN $cuis AND c1.cui <> c2.cui
+            WITH outgoing, incoming, COLLECT({
+                relationship_type: type(r3),
+                direction: 'bidirectional',
+                source_cui: c1.cui,
+                source_name: c1.term,
+                target_cui: c2.cui,
+                target_name: c2.term,
+                source_labels: labels(c1),
+                target_labels: labels(c2)
+            }) as between
+
+            // Two-hop relationships (outgoing-outgoing)
+            MATCH (c1)-[r4]->(intermediate1)-[r5]->(c2)
+            WHERE c1.cui IN $cuis AND c2.cui IN $cuis 
+            AND c1.cui <> c2.cui
+            AND NOT (c1)-[]-(c2)
+            WITH outgoing, incoming, between, COLLECT({
+                relationship_type: type(r4) + '_via_' + type(r5),
+                direction: 'outgoing_chain',
+                source_cui: c1.cui,
+                source_name: c1.term,
+                target_cui: c2.cui,
+                target_name: c2.term,
+                intermediate_name: intermediate1.term,
+                source_labels: labels(c1),
+                target_labels: labels(c2)
+            }) as twohop_out
+
+            // Two-hop relationships (incoming-incoming)
+            MATCH (c2)<-[r6]-(intermediate2)<-[r7]-(c1)
+            WHERE c1.cui IN $cuis AND c2.cui IN $cuis 
+            AND c1.cui <> c2.cui
+            AND NOT (c1)-[]-(c2)
+            WITH outgoing, incoming, between, twohop_out, COLLECT({
+                relationship_type: type(r7) + '_via_' + type(r6),
+                direction: 'incoming_chain',
+                source_cui: c1.cui,
+                source_name: c1.term,
+                target_cui: c2.cui,
+                target_name: c2.term,
+                intermediate_name: intermediate2.term,
+                source_labels: labels(c1),
+                target_labels: labels(c2)
+            }) as twohop_in
+
+            // Mixed direction two-hop relationships
+            MATCH (c1)-[r8]-(intermediate3)-[r9]-(c2)
+            WHERE c1.cui IN $cuis AND c2.cui IN $cuis 
+            AND c1.cui <> c2.cui
+            AND NOT (c1)-[]-(c2)
+            WITH outgoing, incoming, between, twohop_out, twohop_in, COLLECT({
+                relationship_type: type(r8) + '_via_' + type(r9),
+                direction: 'mixed',
+                source_cui: c1.cui,
+                source_name: c1.term,
+                target_cui: c2.cui,
+                target_name: c2.term,
+                intermediate_name: intermediate3.term,
+                source_labels: labels(c1),
+                target_labels: labels(c2)
+            }) as mixed_hops
+
+            // Combine all relationships
+            UNWIND outgoing + incoming + between + twohop_out + twohop_in + mixed_hops as result
+            RETURN DISTINCT 
+                   result.relationship_type as relationship_type,
+                   result.direction as direction,
+                   result.source_cui as source_cui,
+                   result.source_name as source_name,
+                   result.target_cui as target_cui,
+                   result.target_name as target_name,
+                   result.source_labels as source_labels,
+                   result.target_labels as target_labels,
+                   result.intermediate_name as intermediate_name
             """
             
-            related_concepts = self.graph.query(relates_query, {'cuis': cuis})
-            
-            # Add CUIs from related concepts to include them in relationship search
-            for rel in related_concepts:
-                if rel['target_cui'] not in cuis:
-                    cuis.append(rel['target_cui'])
-            
-            # Define relationship types as before
-            relationship_types = {
-                'Disease': [
-                    'MAY_TREAT', 'MAY_PREVENT', 'DISEASE_HAS_FINDING',
-                    'HAS_CAUSATIVE_AGENT', 'OCCURS_IN', 'CAUSES',
-                    'ASSOCIATED_WITH', 'DEVELOPS_INTO', 'HAS_COURSE',
-                    'CLINICAL_COURSE_OF', 'CONTRAINDICATED_WITH_DISEASE'
-                ],
-                'Drug': [
-                    'MAY_TREAT', 'MAY_PREVENT', 'HAS_MECHANISM_OF_ACTION',
-                    'CHEMICAL_OR_DRUG_HAS_MECHANISM_OF_ACTION',
-                    'CONTRAINDICATED_WITH_DISEASE', 'HAS_INGREDIENT',
-                    'HAS_PRECISE_INGREDIENT', 'REGULATES', 
-                    'POSITIVELY_REGULATES', 'NEGATIVELY_REGULATES'
-                ],
-                'Symptom': [
-                    'IS_FINDING_OF_DISEASE', 'ASSOCIATED_FINDING_OF',
-                    'MANIFESTATION_OF', 'DISEASE_HAS_FINDING',
-                    'DISEASE_MAY_HAVE_FINDING', 'MAY_BE_FINDING_OF_DISEASE'
-                ],
-                'Anatomy': [
-                    'HAS_LOCATION', 'LOCATION_OF', 'PART_OF',
-                    'DRAINS_INTO', 'IS_LOCATION_OF_ANATOMIC_STRUCTURE',
-                    'IS_LOCATION_OF_BIOLOGICAL_PROCESS', 'OCCURS_IN'
-                ],
-                'SemanticType': [
-                    'IS_A', 'ASSOCIATED_WITH', 'AFFECTS',
-                    'INTERACTS_WITH', 'PROCESS_OF'
-                ]
-            }
-            
-            # Get all relevant relationship types
-            all_rel_types = []
-            for concept in concepts:
-                node_type = concept.get('node_type')
-                if node_type in relationship_types:
-                    all_rel_types.extend(relationship_types[node_type])
-            
-            all_rel_types = list(set(all_rel_types))
-            
-            # Query for relationships between extracted concepts only
-            direct_query = """
-            MATCH (c1)-[r]-(c2)
-            WHERE c1.cui IN $cuis AND c2.cui IN $cuis
-            AND type(r) IN $rel_types
-            RETURN DISTINCT
-                type(r) as relationship_type,
-                c1.cui as source_cui,
-                c1.term as source_name,
-                c2.cui as target_cui,
-                c2.term as target_name,
-                labels(c1)[0] as source_type,
-                labels(c2)[0] as target_type
-            """
-            
-            direct_relationships = self.graph.query(
-                direct_query,
-                {
-                    'cuis': cuis,
-                    'rel_types': all_rel_types
-                }
-            )
-            
-            # Combine direct relationships with RELATES_TO relationships
-            all_relationships = direct_relationships + related_concepts
-            
-            return all_relationships
+            try:
+                relationships = self.graph.query(query, {'cuis': cuis})
+                logger.info(f"Found {len(relationships)} total relationships")
+                
+                # Log relationship details for debugging
+                for rel in relationships:
+                    source = rel.get('source_name', 'Unknown')
+                    rel_type = rel.get('relationship_type', 'Unknown')
+                    target = rel.get('target_name', 'Unknown')
+                    intermediate = rel.get('intermediate_name')
+                    
+                    if intermediate:
+                        logger.info(f"Relationship: {source} --[{rel_type}]--> via {intermediate} --> {target}")
+                    else:
+                        logger.info(f"Relationship: {source} --[{rel_type}]--> {target}")
+                
+                return relationships
+                
+            except Exception as e:
+                logger.error(f"Neo4j query error: {str(e)}")
+                logger.error("Query failed, trying fallback query...")
+                return []
             
         except Exception as e:
-            logger.error(f"Error getting relationships: {str(e)}")
+            logger.error(f"Error in _get_relationships: {str(e)}")
+            logger.error(f"Stack trace: ", exc_info=True)
             return []
 
     def _generate_answer(self, question: str, concepts: List[Dict], relationships: List[Dict]) -> str:
-        """Generate answer using knowledge graph data to enhance LLM response"""
+        """Generate an answer using LLM with concepts and relationships"""
         try:
-            # Format relevant knowledge graph data as context
-            context = "Medical Knowledge Graph Data:\n\n"
+            # Format concepts for display
+            context = "MEDICAL QUESTION ANALYSIS\n"
+            context += "=" * 80 + "\n\n"
             
-            # Add relevant concepts with definitions
-            context += "Relevant Medical Concepts:\n"
+            # Add the question
+            context += "QUESTION:\n"
+            context += "-" * 50 + "\n"
+            context += f"{question}\n\n"
+            
+            # Add extracted terms
+            context += "EXTRACTED TERMS:\n"
+            context += "-" * 50 + "\n"
             for concept in concepts:
-                context += f"\n• {concept.get('term')} (CUI: {concept.get('cui')})"
-                if concept.get('definition'):
-                    context += f"\n  Definition: {concept.get('definition')}"
-                if concept.get('types'):
-                    context += f"\n  Type: {', '.join(concept.get('types'))}"
+                term_type = concept.get('term_type', 'Unknown')
+                context += f"• {concept.get('name', 'Unknown Term')} ({term_type})\n"
+            context += "\n"
+            
+            # Add concepts with definitions
+            context += "RETRIEVED CONCEPTS:\n"
+            context += "-" * 50 + "\n\n"
+            
+            # Track seen CUIs to avoid duplicates
+            seen_cuis = set()
+            
+            for concept in concepts:
+                cui = concept.get('cui')
+                if cui and cui not in seen_cuis:
+                    seen_cuis.add(cui)
+                    
+                    # Add concept name and CUI
+                    context += f"• {concept.get('name', 'Unknown')} (CUI: {cui})\n"
+                    
+                    # Add definition if available
+                    definition = concept.get('definition', '')
+                    if definition:
+                        context += f"  Definition: {definition}\n"
+                    
+                    context += "\n"
+            
+            # Add relationships section
+            context += "RELEVANT RELATIONSHIPS:\n"
+            context += "-" * 50 + "\n"
+            
+            # Group relationships by type
+            relationship_groups = {}
+            for rel in relationships:
+                rel_type = rel.get('relationship_type', 'Unknown')
+                if rel_type not in relationship_groups:
+                    relationship_groups[rel_type] = []
+                relationship_groups[rel_type].append(rel)
+            
+            # Display relationships by group
+            for rel_type, rels in sorted(relationship_groups.items()):
+                if rel_type in ['HAS_SEMANTIC_TYPE', 'HAS_DEFINITION']:
+                    continue  # Skip semantic type and definition relationships
                 
-                # Add related terms right under each concept
-                related_terms = [r for r in relationships 
-                               if r.get('relationship_type') == 'RELATES_TO' 
-                               and r.get('source_cui') == concept.get('cui')]
-                if related_terms:
-                    context += "\n  Related terms: " + ", ".join(r.get('target_name') for r in related_terms)
+                context += f"\n• {rel_type} Relationships:\n"
+                for rel in rels[:5]:  # Limit to 5 relationships per type to avoid overwhelming
+                    source = rel.get('source_name', 'Unknown')
+                    target = rel.get('target_name', 'Unknown')
+                    direction = rel.get('direction', 'outgoing')
+                    
+                    if 'intermediate_node' in rel:
+                        intermediate = rel.get('intermediate_node', {}).get('name', 'Unknown')
+                        context += f"  - {source} → {intermediate} → {target} ({direction})\n"
+                    else:
+                        context += f"  - {source} → {target} ({direction})\n"
+                
+                if len(rels) > 5:
+                    context += f"  - ... and {len(rels) - 5} more {rel_type} relationships\n"
             
-            # Filter out RELATES_TO relationships for the main relationships section
-            direct_relationships = [r for r in relationships if r.get('relationship_type') != 'RELATES_TO']
+            context += "\n"
             
-            # Add treatment relationships
-            context += "\n\nTreatment Relationships:\n"
-            treatment_rels = [r for r in direct_relationships if r.get('relationship_type') in 
-                            ['MAY_TREAT', 'MAY_BE_TREATED_BY', 'MAY_PREVENT']]
-            for rel in treatment_rels:
-                context += f"\n• {rel.get('source_name')} -> {rel.get('relationship_type')} -> {rel.get('target_name')}"
-
-            # Add mechanism relationships
-            context += "\n\nMechanism Relationships:\n"
-            mechanism_rels = [r for r in direct_relationships if r.get('relationship_type') in 
-                            ['HAS_MECHANISM_OF_ACTION', 'CHEMICAL_OR_DRUG_HAS_MECHANISM_OF_ACTION']]
-            for rel in mechanism_rels:
-                context += f"\n• {rel.get('source_name')} -> {rel.get('relationship_type')} -> {rel.get('target_name')}"
-
-            prompt = f"""You are a medical expert. Answer this question using ONLY the provided knowledge graph data. 
-            Do not use external medical knowledge.
+            # Add analysis and answer section
+            context += "ANALYSIS AND ANSWER:\n"
+            context += "-" * 50 + "\n"
+            
+            # Create the prompt for the LLM
+            prompt = f"""You are a medical expert analyzing a question using a knowledge graph. 
+            Focus on the definitions and relationships provided to give a precise answer.
 
             Question: {question}
 
             {context}
 
-            Provide a comprehensive answer that:
-            1. Pick the correct answer from the list of choices provided
-            2. Addresses the question directly
-            3. Uses only the relationships and concepts shown above
-            4. Cites specific concepts using their CUIs
-            5. Explains any treatment recommendations using the available mechanism data
-            6. States if any crucial information is missing from the knowledge graph
+            Instructions for answering:
+            1. Start by identifying the key concepts relevant to the question
+            2. Use the detailed definitions provided to understand each concept thoroughly
+            3. Examine ALL relationships between concepts, including:
+               a) Disease-Related:
+                  - Disease-Drug relationships
+                  - Disease-Symptom findings
+                  - Causative agents
+                  - Anatomical locations
+               b) Drug-Related:
+                  - Mechanisms of action
+                  - Chemical/drug ingredients
+                  - Contraindications
+               c) Symptom-Related:
+                  - Disease findings
+                  - Associated findings
+                  - Manifestations
+               d) Anatomical:
+                  - Locations and structures
+                  - Part-whole relationships
+                  - Drainage pathways
+               e) General Clinical:
+                  - Associations
+                  - Causal relationships
+                  - Temporal sequences
+                  - Regulatory effects
+               f) Semantic and Definitional:
+                  - Semantic types
+                  - Definitions
+                  - Synonyms and related terms
 
-            Answer in a clear, professional manner."""
-        
-            logger.info(f"\n\nPrompt: {prompt}\n\n")
-            return self.llm(prompt)
+            4. If this is a multiple choice question:
+               a) Directly state which answer option is correct
+               b) Explain why this option is correct using concepts and relationships
+               c) Briefly explain why other options are incorrect
+
+            5. Structure your response with these sections:
+               - RELEVANT RELATIONSHIPS: List key relationships that inform your answer
+               - KEY CONCEPTS USED: Identify the most important concepts and their definitions
+               - DEDUCTION PROCESS: Show your reasoning step by step
+               - FINAL ANSWER: State your conclusion clearly
+               - Include your confidence level and any limitations in the knowledge graph
+
+            Remember to cite specific concepts by their CUI when explaining your reasoning.
+            """
+            
+            # Generate answer using LLM
+            answer = self.llm(prompt)
+            
+            # Combine the context and answer
+            full_response = context + answer
+            
+            return full_response
             
         except Exception as e:
             logger.error(f"Error generating answer: {str(e)}")
-            return "Error: Unable to generate answer due to data processing limitations."
+            return f"Error generating answer: {str(e)}"
 
     def _validate_response(self, response, evidence_list):
         """Validate that response only uses provided evidence"""
@@ -778,8 +914,12 @@ def main():
         processor = MedicalQuestionProcessor(
             graph=graph,
             llm_function=lambda x: client.chat.completions.create(
-                model="gpt-4o",
-                messages=[{"role": "user", "content": x}]
+                model="gpt-4",
+                messages=[
+                    {"role": "system", "content": "You are a medical expert analyzing questions using a knowledge graph."},
+                    {"role": "user", "content": x}
+                ],
+                temperature=0.0
             ).choices[0].message.content
         )
         
@@ -819,38 +959,54 @@ def main():
                         if concept.get('definition'):
                             print(f"Definition: {concept.get('definition')[:100]}...")
                         print(f"Type: {', '.join(concept.get('types', []))}")
+                        
+                        # Add synonyms
+                        synonyms = [r.get('target_name') for r in result['relationships'] 
+                                  if r.get('relationship_type') == 'RELATED_TO' 
+                                  and r.get('source_cui') == concept.get('cui')
+                                  and r.get('target_name') != concept.get('term')]
+                        if synonyms:
+                            print(f"Synonyms: {', '.join(synonyms)}")
                         seen_cuis.add(concept.get('cui'))
                 
-                print("\nKEY RELATIONSHIPS:")
+                print("\nCLINICAL RELATIONSHIPS:")
                 print("-"*50)
-                # Filter relationships to show only treatment and direct disease relationships
-                relevant_relationship_types = {
-                    'MAY_TREAT',
-                    'MAY_BE_TREATED_BY',
-                    'CONTRAINDICATED_WITH_DISEASE',
-                    'HAS_MECHANISM_OF_ACTION',
-                    'CHEMICAL_OR_DRUG_HAS_MECHANISM_OF_ACTION'
-                }
                 
-                # Get all unique terms mentioned in the question
-                question_terms = {concept['term'].lower() for concept in result['concepts']}
-                
-                seen_relationships = set()
+                # Group relationships by type (excluding RELATES_TO)
+                rel_by_type = {}
                 for rel in result['relationships']:
-                    # Only show relationships that:
-                    # 1. Are of relevant types
-                    # 2. Involve concepts mentioned in the question
-                    # 3. Haven't been shown before
+                    if not rel or not isinstance(rel, dict):
+                        continue
+                        
                     rel_type = rel.get('relationship_type')
-                    source_name = rel.get('source_name', '').lower()
-                    target_name = rel.get('target_name', '').lower()
+                    if rel_type == 'RELATED_TO':  # Skip synonyms as they're shown with concepts
+                        continue
+                        
+                    source = rel.get('source_name', '')
+                    target = rel.get('target_name', '')
+                    intermediate = rel.get('intermediate_name')
                     
-                    if (rel_type in relevant_relationship_types and 
-                        (source_name in question_terms or target_name in question_terms)):
-                        rel_key = f"{rel.get('source_name')} -> {rel_type} -> {rel.get('target_name')}"
-                        if rel_key not in seen_relationships:
-                            print(rel_key)
-                            seen_relationships.add(rel_key)
+                    if rel_type and source:
+                        if rel_type not in rel_by_type:
+                            rel_by_type[rel_type] = set()
+                            
+                        # Format the relationship based on its type
+                        if rel_type == 'HAS_SEMANTIC_TYPE':
+                            rel_str = f"{source} has semantic type: {target}"
+                        elif rel_type == 'HAS_DEFINITION':
+                            rel_str = f"{source} definition: {target}"
+                        elif intermediate:
+                            rel_str = f"{source} -> {intermediate} -> {target}"
+                        else:
+                            rel_str = f"{source} -> {target}"
+                            
+                        rel_by_type[rel_type].add(rel_str)
+                
+                # Display relationships grouped by type
+                for rel_type, rels in sorted(rel_by_type.items()):
+                    print(f"\n{rel_type}:")
+                    for rel in sorted(rels):
+                        print(f"• {rel}")
                 
                 print("\n" + "="*50)
                 

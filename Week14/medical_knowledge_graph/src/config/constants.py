@@ -234,6 +234,7 @@ RELATION_TYPE_MAPPING = {
     # Disease relationships
     'may_treat': 'MAY_TREAT',
     'may_prevent': 'MAY_PREVENT',
+    'may_be_prevented_by': 'MAY_BE_PREVENTED_BY',
     'disease_has_finding': 'DISEASE_HAS_FINDING',
     'associated_finding_of': 'ASSOCIATED_FINDING_OF',
     # symptom 
@@ -254,6 +255,8 @@ RELATION_TYPE_MAPPING = {
     'contraindicated_mechanism_of_action_of': 'CONTRAINDICATED_MECHANISM_OF_ACTION_OF',
     'mechanism_of_action_of': 'MECHANISM_OF_ACTION_OF',
     'chemical_or_drug_has_mechanism_of_action': 'CHEMICAL_OR_DRUG_HAS_MECHANISM_OF_ACTION',
+    'has_contraindicated_drug': 'HAS_CONTRAINDICATED_DRUG',
+    'induces': 'INDUCES',
     
     # Anatomical relationships
     'occurs_in': 'OCCURS_IN',
@@ -289,6 +292,64 @@ RELATION_TYPE_MAPPING = {
     # Treatment priority
     'disease_has_accepted_treatment_with_regimen': 'DISEASE_HAS_ACCEPTED_TREATMENT_WITH_REGIMEN',
 
+    # Clinical Site and Location Relationships
+    'direct_procedure_site_of': 'DIRECT_PROCEDURE_SITE_OF',  # Specific anatomic site where procedure occurs
+    'procedure_site_of': 'PROCEDURE_SITE_OF',                # General site for procedures
+    'finding_site_of': 'FINDING_SITE_OF',                    # Where clinical findings are located
+    'has_finding_site': 'HAS_FINDING_SITE',                  # Inverse of above - critical for exams
+    
+    # Composition and Component Relationships
+    'has_component': 'HAS_COMPONENT',                        # What something consists of
+    'has_active_ingredient': 'HAS_ACTIVE_INGREDIENT',        # Pharmaceutical composition
+    'has_active_moiety': 'HAS_ACTIVE_MOIETY',                # Pharmacologically active part
+    'has_basis_of_strength_substance': 'HAS_BASIS_OF_STRENGTH_SUBSTANCE',  # Important for dosing
+    'has_measured_component': 'HAS_MEASURED_COMPONENT',      # What lab tests measure
+    
+    # Causation and Process Relationships
+    'due_to': 'DUE_TO',                                      # Critical for pathophysiology understanding
+    'method_of': 'METHOD_OF',                                # How procedures are performed
+    'measures': 'MEASURES',                                  # What diagnostic tests evaluate
+    'has_physiologic_effect': 'HAS_PHYSIOLOGIC_EFFECT',      # How drugs affect physiology
+    'pathological_process_of': 'PATHOLOGICAL_PROCESS_OF',    # Disease mechanisms
+    
+    # Finding and Context Relationships
+    'has_associated_finding': 'HAS_ASSOCIATED_FINDING',      # Clinical associations
+    'associated_morphology_of': 'ASSOCIATED_MORPHOLOGY_OF',  # Pathology correlations
+    'may_be_molecular_abnormality_of_disease': 'MAY_BE_MOLECULAR_ABNORMALITY_OF',  # Molecular bases
+    'has_finding_context': 'HAS_FINDING_CONTEXT',            # Clinical context of findings
+    
+    # Genetic and Molecular Relationships
+    'genetic_biomarker_related_to': 'GENETIC_BIOMARKER_RELATED_TO',  # Genetic markers
+    'gene_product_plays_role_in_biological_process': 'GENE_PRODUCT_PLAYS_ROLE_IN_PROCESS',
+    
+    # Anatomical Relationships
+    'continuous_with': 'CONTINUOUS_WITH',                    # Anatomical continuity
+    'superior_to': 'SUPERIOR_TO',                            # Anatomical positioning
+    'posterior_to': 'POSTERIOR_TO',                          # Anatomical positioning
+    'has_regional_part': 'HAS_REGIONAL_PART',                # Anatomical subdivision
+
+    # Primary Synonym Relationships
+    'same_as': 'SAME_AS',                        # Direct equivalence between concepts
+    'possibly_equivalent_to': 'POSSIBLY_EQUIVALENT_TO',  # Potential equivalence
+    
+    # Term Variations
+    'has_permuted_term': 'HAS_PERMUTED_TERM',    # Different word order, same meaning
+    'permuted_term_of': 'PERMUTED_TERM_OF',      # Inverse relationship
+    
+    # Entry Variations
+    'has_entry_version': 'HAS_ENTRY_VERSION',    # Different entry format
+    'entry_version_of': 'ENTRY_VERSION_OF',      # Inverse relationship
+    
+    # Name Variations
+    'has_print_name': 'HAS_PRINT_NAME',          # Official display name
+    'expanded_form_of': 'EXPANDED_FORM_OF',      # Full form of abbreviation
+    
+    # Cross-vocabulary Mapping
+    'mapped_to': 'MAPPED_TO',                    # Equivalent in another vocabulary
+    'mapped_from': 'MAPPED_FROM',                # Inverse mapping relationship
+    
+    # Drug Name Equivalence
+    'tradename_of': 'TRADENAME_OF',              # Brand name of generic drug
 }
 
 # Hierarchical relationship mappings from MRHIER

@@ -1,0 +1,362 @@
+[
+    {
+        "question": "A 39-year-old man presents to the emergency department because of progressively worsening chest pain and nausea that started at a local bar 30 minutes prior. The pain radiates to the epigastric area. He has a 5-year history of untreated hypertension. He has smoked 1 pack of cigarettes daily for the past 5 years and started abusing cocaine 2 weeks before his emergency room visit. The patient is diaphoretic and in marked distress. What should be the first step in management?",
+        "options": {
+            "A": "Diltiazem",
+            "B": "Labetalol",
+            "C": "Propranolol",
+            "D": "Reassurance and continuous monitoring"
+        },
+        "answer": "Reassurance and continuous monitoring",
+        "domain": "Obstetrics/Gynecology",
+        "difficulty": "Easy"
+    },
+    {
+        "question": "A 35-year-old woman comes to the physician because she has been feeling very stressed over the past several months. During this period, she has found it difficult to relax. She states that her head is full of worries. She works at an accountant's office and reports difficulty in concentrating on her work. She has been working longer shifts because one of her coworkers is on vacation and reports feeling more tired than usual. She is married and frequently fights with her husband. The patient states that in order to deal with her stress, she goes shopping. While shopping, she steals small trivial items and feels immediately relieved thereafter. She discards the objects she steals and has feelings of shame and guilt about her actions. Her husband is concerned about her behavior, but she is unable to stop shoplifting. Her vital signs are within normal limits. On mental status examination, she is oriented to person, place, and time. She reports feeling anxious. Physical examination shows no abnormalities. Which of the following is the most appropriate next step in management?",
+        "options": {
+            "A": "Administration of lithium",
+            "B": "Interpersonal therapy",
+            "C": "Psychodynamic psychotherapy",
+            "D": "Cognitive behavioral therapy"
+        },
+        "answer": "Cognitive behavioral therapy",
+        "domain": "Emergency Medicine",
+        "difficulty": "Hard"
+    },
+    {
+        "question": "A 29-year-old G1P0 woman is giving birth at 38 weeks gestation to a  boy via vaginal delivery. As soon as the infant is clear of the vagina, a congenital malformation of the abdomen is observed. The infant is removed from the delivery room for further evaluation. Visual inspection shows loops of intestine protruding out of his abdomen on the right side. His APGAR scores are 7 at 1 minute and 9 at 5 minutes. His heart rate is 125/min, and his respirations are 45/min. All reflexes appear normal. There are no other visible defects. Which of the following is the most appropriate next step in management?",
+        "options": {
+            "A": "Wrap the intestines in a sterile bowel bag",
+            "B": "Transfer the newborn to the NICU",
+            "C": "Start IV fluids",
+            "D": "Transfer the newborn for immediate surgery"
+        },
+        "answer": "Wrap the intestines in a sterile bowel bag",
+        "domain": "Neurology",
+        "difficulty": "Easy"
+    },
+    {
+        "question": "A 55-year-old man with chronic hepatitis B virus infection comes to the physician because of generalized fatigue and a 5.4 kg (12 lb) weight loss over the past 4 months. Physical examination shows hepatomegaly. Laboratory studies show an \u03b1-fetoprotein concentration of 380 ng/ml (N < 10 ng/mL). A CT scan of the abdomen with contrast shows a solitary mass in the left lobe of the liver that enhances in the arterial phase. Which of the following is the most likely underlying pathogenesis of this patient's current condition?",
+        "options": {
+            "A": "Overexpression of secretory hepatitis antigen",
+            "B": "Intracellular accumulation of misfolded protein",
+            "C": "Gain of function mutation of a proto-oncogene",
+            "D": "Integration of foreign DNA into host genome\n\""
+        },
+        "answer": "Integration of foreign DNA into host genome\n\"",
+        "domain": "Physiology",
+        "difficulty": "Easy"
+    },
+    {
+        "question": "A 45-year-old man presents to a surgeon with painless swelling over his right leg. He noticed the swelling 6 months ago, but he ignored it because it was painless. However, he is now concerned as the swelling has been increasing in size over the last 6 months. He also mentions that his father and brother have lipomas over the extremities. On physical examination, the swelling is well-circumscribed and non-tender, measuring approximately 4 x 5 cm. After evaluation, the surgeon performs a surgical resection of the tumor and sends the tissue for histopathological examination. The pathologist reports the tumor to be a liposarcoma rather than a lipoma. Which of the following enzymes is most likely to show increased activity in the cells of this patient\u2019s tumor?",
+        "options": {
+            "A": "Alkaline phosphatase",
+            "B": "RNase",
+            "C": "Superoxide dismutase",
+            "D": "Telomerase"
+        },
+        "answer": "Telomerase",
+        "domain": "Pathology",
+        "difficulty": "Easy"
+    },
+    {
+        "question": "A 60-year-old man with severe persistent asthma since the age of 14 presents with an acute exacerbation of shortness of breath, wheezing, and coughing over the last several days. His asthmatic symptoms are usually well controlled with regular high-dose inhaled triamcinolone, but over the last week or so he has developed a nocturnal cough and mild wheezing despite good compliance with controller medications. A review of several spirometry reports suggest of bronchial asthma with a partial irreversible airway obstruction. Which of the following is most likely to be associated with the recent loss of asthma control in this patient?",
+        "options": {
+            "A": "Airway epithelial shedding",
+            "B": "Airway smooth muscle atrophy",
+            "C": "Airway remodeling",
+            "D": "Airway hyperresponsiveness"
+        },
+        "answer": "Airway remodeling",
+        "domain": "Pharmacology",
+        "difficulty": "Hard"
+    },
+    {
+        "question": "A 14-year-old girl is brought to the physician by her father because of fever, chills, abdominal pain, and profuse non-bloody diarrhea. Her symptoms began one week ago, when she had several days of low-grade fever and constipation. She returned from Indonesia 2 weeks ago, where she spent the summer with her grandparents. Her temperature is 39.3\u00b0C (102.8\u00b0F). Examination shows diffuse abdominal tenderness and mild hepatosplenomegaly. There is a faint salmon-colored maculopapular rash on her trunk and abdomen. Which of the following is the most likely causal organism?",
+        "options": {
+            "A": "Giardia lamblia",
+            "B": "Schistosoma mansoni",
+            "C": "Salmonella typhi",
+            "D": "Clostridium perfringens"
+        },
+        "answer": "Salmonella typhi",
+        "domain": "Anatomy",
+        "difficulty": "Medium"
+    },
+    {
+        "question": "A 5-year-old Syrian immigrant and her family present for an immigration physical. Her mother describes photophobia, bilateral lacrimation, eye itching, and eyelid swelling for the last week. She is known to have an allergy to cephalosporins. She was born at 39 weeks gestation via spontaneous vaginal delivery. She has met all of her developmental milestones and most of her vaccines. Her vital signs are as follows: blood pressure 105/60 mm Hg, heart rate 98/min, respiratory rate 18/min, and temperature 37.0\u00b0C (98.6\u00b0F). The physical examination is mostly normal except for her eye exam as presented in the image below. Which of the following statements is true regarding treatment of this patient\u2019s condition?",
+        "options": {
+            "A": "A third-generation cephalosporin would be the best treatment option in case the child did not have an actual allergy.",
+            "B": "The child should be treated with topical bacitracin.",
+            "C": "The best treatment option is oral tetracycline.",
+            "D": "The child should be administered a single dose of oral azithromycin."
+        },
+        "answer": "The child should be administered a single dose of oral azithromycin.",
+        "domain": "Medical Ethics",
+        "difficulty": "Hard"
+    },
+    {
+        "question": "A 66-year-old male with a history of myocardial infarction presents to your primary care office with complaints of dyspnea on exertion and swollen feet and ankles. On exam, you note an elevated JVP and 2+ pitting edema of bilateral lower extremities. What is the most likely explanation for this patient's lower extremity edema?",
+        "options": {
+            "A": "Increase in capillary pressure",
+            "B": "Decrease in plasma proteins",
+            "C": "Increase in capillary permeability",
+            "D": "Increase in interstitial fluid pressure"
+        },
+        "answer": "Increase in capillary pressure",
+        "domain": "Pathology",
+        "difficulty": "Medium"
+    },
+    {
+        "question": "Background: There is a lack of consensus about whether the initial imaging method for patients with suspected nephrolithiasis should be computed tomography (CT) or ultrasonography.\nMethods: In this multicenter, pragmatic, comparative effectiveness trial, we randomly assigned patients 18 to 76 years of age who presented to the emergency department with suspected nephrolithiasis to undergo initial diagnostic ultrasonography performed by an emergency physician (point-of-care ultrasonography), ultrasonography performed by a radiologist (radiology ultrasonography), or abdominal non-contrast CT. Subsequent management, including additional imaging, was at the discretion of the physician. We compared the three groups with respect to the 30-day incidence of high-risk diagnoses with complications that could be related to missed or delayed diagnosis and the 6-month cumulative radiation exposure. Secondary outcomes were serious adverse events, related serious adverse events (deemed attributable to study participation), pain (assessed on an 11-point visual-analog scale, with higher scores indicating more severe pain), return emergency department visits, hospitalizations, and diagnostic accuracy.\nResults: A total of 2759 patients underwent randomization: 908 to point-of-care ultrasonography, 893 to radiology ultrasonography, and 958 to non-contrast CT abdomen The incidence of high-risk diagnoses with complications in the first 30 days was low (0.4%) and did not vary according to imaging method. The mean 6-month cumulative radiation exposure was significantly lower in the ultrasonography groups than in the CT group (p < 0.001). Serious adverse events occurred in 12.4% of the patients assigned to point-of-care ultrasonography, 10.8% of those assigned to radiology ultrasonography, and 11.2% of those assigned to CT (p = 0.50). Related adverse events were infrequent (incidence, 0.4%) and similar across groups. By 7 days, the average pain score was 2.0 in each group (p = 0.84). Return emergency department visits, hospitalizations, and diagnostic accuracy did not differ significantly among the groups.\nConclusions: Initial ultrasonography was associated with lower cumulative radiation exposure than initial CT, without significant differences in high-risk diagnoses with complications, serious adverse events, pain scores, return emergency department visits, or hospitalizations.\nIf the conclusion stated above was, in fact, due to the earlier detection of nephrolithiasis in patients undergoing point of care ultrasound, what type of bias would this exemplify?",
+        "options": {
+            "A": "Measurement bias",
+            "B": "Recall bias",
+            "C": "Lead-time bias",
+            "D": "Selection bias"
+        },
+        "answer": "Measurement bias",
+        "domain": "Surgery",
+        "difficulty": "Easy"
+    },
+    {
+        "question": "A 74-year-old woman with a history of hypertension, hyperlipidemia, and type 2 diabetes mellitus is brought to her primary care doctor by her son who is concerned about the patient's ability to manage her activities of daily living. She has been living alone since her husband passed away 2 years ago. She has remained an active member of her retirement community's wine club; however, she stopped attending the meetings 3 weeks ago. She is generally able to her maintain her house, but her house appears more disorganized over the past 2 weeks. She generally drives short distances but avoids driving long distances as she occasionally gets lost when navigating new areas. She feels like her balance is getting worse, but she has not fallen. She has noticed increased urinary urgency over the past 8 months and has had 2 episodes of incontinence. Despite these changes, she reports feeling well. She drinks 4-6 glasses of wine per day. She was started on multiple medications for worsening anxiety by her psychiatrist 1 month ago. Her BMI is 31 kg/m^2. Her temperature is 99.8\u00b0F (37.7\u00b0C), blood pressure is 115/65 mmHg, pulse is 95/min, and respirations are 17/min. On examination, she is oriented to person and time but not place or situation. She does not seem to recognize her doctor despite knowing him for many years. She becomes somnolent intermittently throughout the interview. She can recall 0/3 words after 5 minutes. She has a low-frequency tremor in her right arm that increases in severity with deliberate movement. Which of the following is the most likely diagnosis in this patient?",
+        "options": {
+            "A": "Alzheimer dementia",
+            "B": "Delirium",
+            "C": "Lewy body dementia",
+            "D": "Normal pressure hydrocephalus"
+        },
+        "answer": "Delirium",
+        "domain": "Pathology",
+        "difficulty": "Hard"
+    },
+    {
+        "question": "A 54-year-old male makes an appointment with his primary care physician due to chronic fatigue that has left him unable to hike or do other physically demanding activities with his friends. He has well-controlled hypertension and diabetes but has otherwise been healthy. He does not smoke but drinks socially with his friends. Physical exam reveals enlarged nodules that are not tender to palpation. A biopsy is obtained showing a characteristic change in chromosome 18. The regulation of which of the following proteins will be most abnormal in this patient?",
+        "options": {
+            "A": "Caspase-9",
+            "B": "CD15",
+            "C": "Cyclin-dependent kinase 4",
+            "D": "Ras pathway transcription factors"
+        },
+        "answer": "Caspase-9",
+        "domain": "Pharmacology",
+        "difficulty": "Medium"
+    },
+    {
+        "question": "A 20-year-old man comes to the physician because of worsening gait unsteadiness and bilateral hearing loss for 1 month. He has had intermittent tingling sensations on both cheeks over this time period. He has no history of serious medical illness and takes no medications. Audiometry shows bilateral sensorineural hearing loss. Genetic evaluation shows a mutation of a tumor suppressor gene on chromosome 22 that encodes merlin. This patient is at increased risk for which of the following conditions?",
+        "options": {
+            "A": "Renal cell carcinoma",
+            "B": "Meningioma",
+            "C": "Astrocytoma",
+            "D": "Vascular malformations"
+        },
+        "answer": "Meningioma",
+        "domain": "Anatomy",
+        "difficulty": "Easy"
+    },
+    {
+        "question": "A 16-year-old female presents to her physician\u2019s office after noticing a round lump in her left breast 2 months ago. She reports that the lump seemed to enlarge and became tender just preceding her last 2 menses. It is otherwise painless, and the patient denies any discharge or skin changes. She has no past medical history but her grandmother, age 72, was just diagnosed with invasive ductal carcinoma of the breast. The patient is an avid softball player at her high school and denies alcohol, smoking, or illicit drug use. On exam, the breasts appear symmetric and normal. A 3-cm round, mobile mass is palpated in the upper outer quadrant of the left breast. There is slight tenderness to deep palpation of the mass. There is no axillary lymphadenopathy on either side. Which of the following is the most likely outcome of this patient\u2019s condition?",
+        "options": {
+            "A": "This mass will decrease in size if the patient starts oral contraceptives",
+            "B": "This mass slightly increases this patient\u2019s risk of breast cancer in the future",
+            "C": "This mass will most likely decrease in size or disappear over time",
+            "D": "If this mass grows rapidly to greater than 5 cm, radiation and chemotherapy are indicated"
+        },
+        "answer": "This mass will most likely decrease in size or disappear over time",
+        "domain": "Surgery",
+        "difficulty": "Easy"
+    },
+    {
+        "question": "A 21-year-old old college student is brought to the emergency department by his roommates because he has been \"acting strangely.\" Over the last 7 months, he has claimed to hear voices telling him that he must prepare for the end of the world. He used to be a straight A student but started failing exams recently due to his erratic behavior. Furthermore, there are periods of time where he does not sleep for several days and redecorates the entire apartment. During those times he spends huge amounts of money on online shopping. These periods usually last for about 2 weeks and happen every other month. On physical exam, he appears unkept and irritated. He seems to respond to invisible stimuli, and he jumps from topic to topic without clear focus. Which of the following is most consistent with this patient's presentation?",
+        "options": {
+            "A": "Brief psychotic disorder",
+            "B": "Schizoaffective disorder",
+            "C": "Schizophreniform disorder",
+            "D": "Schizotypal personality disorder"
+        },
+        "answer": "Schizoaffective disorder",
+        "domain": "Anatomy",
+        "difficulty": "Medium"
+    },
+    {
+        "question": "An investigator is studying the cell morphologies of the respiratory tract. He obtains a biopsy from the mainstem bronchus of a patient. On microscopic examination, the biopsy sample shows uniform squamous cells in layers. Which of the following best describes the histologic finding seen in this patient?",
+        "options": {
+            "A": "Metaplasia",
+            "B": "Normal epithelium",
+            "C": "Dysplasia",
+            "D": "Anaplasia\n\""
+        },
+        "answer": "Metaplasia",
+        "domain": "Microbiology",
+        "difficulty": "Easy"
+    },
+    {
+        "question": "A 44-year-old man comes to the clinic because of a 6-month history of progressive fatigue. He has a history of intravenous heroin use. Physical examination shows scleral icterus. A serum study is positive for hepatitis C RNA. Therapy with interferon-\u03b1 is initiated in combination with a second drug. The expected beneficial effect of the additional drug is most likely due to inhibition of which of the following enzymes?",
+        "options": {
+            "A": "Inosine monophosphate dehydrogenase",
+            "B": "DNA-dependent RNA polymerase",
+            "C": "DNA gyrase",
+            "D": "Dihydroorotate dehydrogenase"
+        },
+        "answer": "Inosine monophosphate dehydrogenase",
+        "domain": "Pharmacology",
+        "difficulty": "Hard"
+    },
+    {
+        "question": "A 4-year-old girl is brought to the emergency department with a persistent cough, fever, and vomiting. The past year the child has been admitted to the hospital 3 times with pneumonia. For the past 1 week, the child has been experiencing thick purulent cough and says that her chest feels \u2018heavy\u2019. Her stools have been loose and foul-smelling over the past week. Her parents are also concerned that she has not gained much weight due to her frequent hospital visits. She was born at 39 weeks gestation via spontaneous vaginal delivery and is up to date on all vaccines and is meeting all developmental milestones. On physical exam, the temperature is 39.1\u00b0C (102.4\u00b0F). She appears lethargic and uncomfortable. Crackles are heard in the lower lung bases, with dullness to percussion. A small nasal polyp is also present on inspection. Which of the following is the most likely cause for the girl\u2019s symptoms?",
+        "options": {
+            "A": "Dysfunction in a transmembrane regulator",
+            "B": "Inefficient breakdown of leucine, isoleucine, and valine",
+            "C": "Dysfunction in the motility of respiratory cilia",
+            "D": "Deficiency in lymphocytic activity"
+        },
+        "answer": "Dysfunction in a transmembrane regulator",
+        "domain": "Internal Medicine",
+        "difficulty": "Hard"
+    },
+    {
+        "question": "A 42-year-old chronic alcoholic man was admitted to the hospital for inappropriate behavior and disturbed memory. He presents with severe retrograde memory loss, confusion, and confabulation. Neurologic examination showed horizontal nystagmus. He also has bilateral pretibial pitting edema and perioral erythema. CT studies of the brain were normal. The duty physician suspects the patient may be vitamin deficient. Which of the following reactions does the deficient vitamin mediate?",
+        "options": {
+            "A": "Alpha-Ketoglutarate + NAD+ + CoA <=> Succinyl-CoA + CO2 + NADH",
+            "B": "Succinate + FAD (enzyme bound) <=> Fumarate + FADH2",
+            "C": "Isocitrate + NAD+ <=> Alpha-Ketoglutarate + CO2 + NADH",
+            "D": "Succinyl-CoA + Pi + GDP <=> Succinate + GTP + CoA"
+        },
+        "answer": "Alpha-Ketoglutarate + NAD+ + CoA <=> Succinyl-CoA + CO2 + NADH",
+        "domain": "Medical Ethics",
+        "difficulty": "Easy"
+    },
+    {
+        "question": "A 7-year-old boy is brought to his pediatrician\u2019s office for a follow-up visit. He was diagnosed with asthma when he was 3 years old and has since been on treatment for the condition. He is currently on a \u03b2-agonist inhaler because of exacerbation of his symptoms. He has observed that his symptoms are more prominent in springtime, especially when the new flowers are blooming. His mother has a backyard garden and whenever he goes out to play there, he experiences chest tightness with associated shortness of breath. He has been advised to take more precaution during this seasonal change and to stay away from pollen. He is also being considered for an experimental therapy, which attenuates the activity of certain mediators which cause his asthmatic attack. The targeted mediator favors the class switching of antibodies. A reduction in this mechanism will eventually reduce the exaggerated response observed during his asthmatic attacks, even when exposed to an allergen. Which of the following mediators is described in this experimental study?",
+        "options": {
+            "A": "IL-2",
+            "B": "IL-10",
+            "C": "IL-13",
+            "D": "IL-4"
+        },
+        "answer": "IL-4",
+        "domain": "Internal Medicine",
+        "difficulty": "Medium"
+    },
+    {
+        "question": "An investigator is studying the effect of drug X on the retinoblastoma (Rb) gene on chromosome 13 in endometrial cells. Endometrial cells obtained from study participants are plated on growth media and the distribution of cell cycle phase is measured with flow cytometry. Drug X, which is known to activate cyclin-dependent kinase 4, is administered to all the cells, and the distribution of cell cycle phase is measured again 1 hour later. Which of the following is most likely to result from the action of drug X on the Rb gene?",
+        "options": {
+            "A": "G1 phase arrest",
+            "B": "Prophase I arrest",
+            "C": "Initiation of S phase",
+            "D": "Completion of G2 phase"
+        },
+        "answer": "Initiation of S phase",
+        "domain": "Biochemistry",
+        "difficulty": "Easy"
+    },
+    {
+        "question": "A 28-year-old primigravid woman at 39 weeks gestation is admitted to the hospital in active labor. On examination, the cervix is 100% effaced and 10 cm dilated. After 5 minutes of pushing, there is a prolonged deceleration of the fetal heart rate to 90/min. A decision to perform an episiotomy is made to expedite vaginal delivery. The anesthesiologist locates the ischial spines by palpating the posterolateral vaginal sidewall and administers an anesthetic. Three minutes later, pinching the posterior vulva does not provoke pain. The anesthetized nerve most likely also supplies which of the following structures?",
+        "options": {
+            "A": "Skin of the lateral thigh",
+            "B": "External anal sphincter",
+            "C": "Skin of the mons pubis",
+            "D": "Detrusor muscle"
+        },
+        "answer": "External anal sphincter",
+        "domain": "Biochemistry",
+        "difficulty": "Easy"
+    },
+    {
+        "question": "A 47-year-old woman presents to her primary care physician for evaluation of her right hand. Specifically, she says that she was gardening 8 hours prior to presentation when she sustained a laceration over her distal interphalangeal (DIP) joints. Since then, they have become red and swollen. She has also had pain in her proximal interphalangeal (PIP) joints and metacarpophalangeal (MCP) joints for several years and reports that this pain is worse in the morning but improves over the day. The cells that are present in this patient's DIP joints and PIP joints are analyzed and compared. Which of the following is most likely to be true about this patient's findings?",
+        "options": {
+            "A": "DIP has fewer neutrophils and more monocytes than PIP",
+            "B": "DIP has more neutrophils and fewer monocytes than PIP",
+            "C": "DIP has more neutrophils and more monocytes than PIP",
+            "D": "DIP and PIP have similar numbers of neutrophils and monocytes"
+        },
+        "answer": "DIP has more neutrophils and fewer monocytes than PIP",
+        "domain": "Biochemistry",
+        "difficulty": "Medium"
+    },
+    {
+        "question": "A 3-month-old infant is brought to her pediatrician because she coughs and seems to have difficulty breathing while feeding. In addition, she seems to have less energy compared to other babies and appears listless throughout the day. She was born by cesarean section to a G1P1 woman with no prior medical history and had a normal APGAR score at birth. Her parents say that she has never been observed to turn blue. Physical exam reveals a high-pitched holosystolic murmur that is best heard at the lower left sternal border. The most likely cause of this patient's symptoms is associated with which of the following abnormalities?",
+        "options": {
+            "A": "22q11 deletion",
+            "B": "Deletion of genes on chromosome 7",
+            "C": "Lithium exposure in utero",
+            "D": "Maternal alcohol consumption"
+        },
+        "answer": "22q11 deletion",
+        "domain": "Pharmacology",
+        "difficulty": "Medium"
+    },
+    {
+        "question": "A 59-year-old man is brought to the emergency department with a history of black, tarry stools but denies vomiting of blood or abdominal pain. His family has noticed progressive confusion. History is significant for liver cirrhosis and alcoholism. His heart rate is 112/min, temperature is 37.1\u00b0C (98.7\u00b0F), and blood pressure is 110/70 mm Hg. On examination, he is jaundiced, lethargic, is oriented to person and place but not date, and has moderate ascites. Neurological examination reveals asterixis, and his stool is guaiac-positive. Liver function test are shown below:\nTotal albumin 2 g/dL\nProthrombin time 9 seconds\nTotal bilirubin 5 mg/dL\nAlanine aminotransferase (ALT) 100 U/L\nAspartate aminotransferase (AST) 220 U/L\nWhich of the following is a feature of this patient condition?",
+        "options": {
+            "A": "Ammonia level is the best initial test to confirm the diagnosis",
+            "B": "It is a diagnosis of exclusion",
+            "C": "It only occurs in patients with cirrhosis",
+            "D": "Electroencephalography (EEG) usually shows focal localising abnormality"
+        },
+        "answer": "It is a diagnosis of exclusion",
+        "domain": "Internal Medicine",
+        "difficulty": "Medium"
+    },
+    {
+        "question": "Four days after admission to the hospital for pneumonia, a 68-year-old woman develops abdominal pain and watery, foul-smelling diarrhea. Current medications include intravenous ceftriaxone and oral azithromycin. Stool cultures grow gram-positive, anaerobic rods. She is moved to an isolated hospital room. Sterilization with which of the following agents is most likely to prevent transmission of this pathogen to the next patient who will occupy her room?",
+        "options": {
+            "A": "Chlorine-based solution",
+            "B": "Iodine-based solution",
+            "C": "Isopropanol-based solution",
+            "D": "Quaternary amine-based solution"
+        },
+        "answer": "Chlorine-based solution",
+        "domain": "Anatomy",
+        "difficulty": "Hard"
+    },
+    {
+        "question": "A healthy 23-year-old male is undergoing an exercise stress test as part of his physiology class. If blood were to be sampled at different locations before and after the stress test, which area of the body would contain the lowest oxygen content at both time points?",
+        "options": {
+            "A": "Inferior vena cava",
+            "B": "Coronary sinus",
+            "C": "Pulmonary artery",
+            "D": "Pulmonary vein"
+        },
+        "answer": "Coronary sinus",
+        "domain": "Pharmacology",
+        "difficulty": "Easy"
+    },
+    {
+        "question": "A previously healthy 16-year-old boy comes to the physician because of a 5-day history of pain at the back of his left ankle. His mother had a myocardial infarction at 54 years. His BMI is 23 kg/m2. There is tenderness above the left posterior calcaneus and a firm, 3-cm, skin-colored nodule that moves with the left Achilles tendon. A photomicrograph from a biopsy of the nodule is shown. Serum studies in this patient are most likely to show increased levels of which of the following?",
+        "options": {
+            "A": "Rheumatoid factor",
+            "B": "Angiotensin converting enzyme",
+            "C": "Low-density lipoprotein",
+            "D": "Triglycerides"
+        },
+        "answer": "Low-density lipoprotein",
+        "domain": "Microbiology",
+        "difficulty": "Easy"
+    },
+    {
+        "question": "Six days after undergoing surgical repair of a hip fracture, a previously healthy 79-year-old woman is agitated and confused. She is unarousable during the day, but then is awake and impulsive during the night, requiring frequent reorientation. Her husband says that she usually drinks one to two glasses of wine weekly. Her only current medication is oxycodone for pain. Her vital signs are within normal limits. She is distressed and oriented to person but not to place or time. Neurologic examination shows inattentiveness but no focal deficits. Urine dipstick is normal. Which of the following is the most likely cause of her current condition?",
+        "options": {
+            "A": "Dementia",
+            "B": "Opioid intoxication",
+            "C": "Delirium",
+            "D": "Urinary tract infection"
+        },
+        "answer": "Delirium",
+        "domain": "Pharmacology",
+        "difficulty": "Medium"
+    },
+    {
+        "question": "A 74-year-old man was admitted to the intensive care ward due to progressive dyspnea, cough with pink sputum, and diaphoresis. He had 2 myocardial infarctions at the age of 66 and 69 years and suffers from chronic heart failure. At the time of presentation, his vital signs are as follows: blood pressure 90/50 mm Hg, heart rate 108/min, respiratory rate 29/min, and temperature 35.5\u00b0C (95.9\u00b0F). On physical examination, the patient sits upright. He is lethargic and cyanotic. Lung auscultation reveals widespread bilateral fine rales. Cardiac examination is significant for S3, accentuation of the pulmonic component of S2, and a systolic murmur heard best at the apex of the heart. Soon after hospitalization, the patient develops ventricular fibrillation and dies despite adequate resuscitation measures. Which microscopic finding would you expect to see in this patient on autopsy?",
+        "options": {
+            "A": "Brownish inclusions in the pulmonary macrophages on H&E staining",
+            "B": "Positive Prussian-blue staining of the kidney tissue",
+            "C": "Ground-glass hepatocytes",
+            "D": "Positive Congo-red staining of the cardiac tissue"
+        },
+        "answer": "Brownish inclusions in the pulmonary macrophages on H&E staining",
+        "domain": "Pathology",
+        "difficulty": "Hard"
+    }
+]

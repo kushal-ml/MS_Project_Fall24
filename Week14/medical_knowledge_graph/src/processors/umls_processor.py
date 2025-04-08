@@ -1,4 +1,5 @@
 import os
+import sys
 import pandas as pd
 import numpy as np
 from multiprocessing import Pool, cpu_count
@@ -12,8 +13,26 @@ from src.processors.base_processor import BaseProcessor, DatabaseMixin
 from src.config.constants import IMPORTANT_RELATIONS, USMLE_DOMAINS, IMPORTANT_SEMANTIC_TYPE, SEMANTIC_TYPE_TO_LABEL, RELATION_TYPE_MAPPING,  HIER_TYPE_MAPPING
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 from neo4j.exceptions import ServiceUnavailable, SessionExpired
+from langchain.embeddings import HuggingFaceEmbeddings
+from langchain.embeddings.base import Embeddings
+from langchain.schema import Document
+import torch
+from tqdm.auto import tqdm
 
 logger = logging.getLogger(__name__)
+
+class STEncoder(Embeddings):
+    """Sentence Transformer encoder for medical concepts"""
+    def __init__(self, model):
+        self.model = model
+    
+    def embed_documents(self, texts):
+        """Embed documents/texts"""
+        return self.model.embed_documents(texts)
+    
+    def embed_query(self, text):
+        """Embed a query"""
+        return self.model.embed_query(text)
 
 class UMLSProcessor(BaseProcessor, DatabaseMixin):
     def __init__(self, graph, max_retries=3, min_wait=1, max_wait=10):
@@ -330,6 +349,37 @@ class UMLSProcessor(BaseProcessor, DatabaseMixin):
     def _create_nodes_batch(self, batch: List[Dict], max_retries: int = 3):
         """Create concept nodes in Neo4j using optimized Cypher with retry logic"""
         retries = 0
+        
+        # Initialize the embedding model if not already done
+        if not hasattr(self, 'embedding_model'):
+            model_name = "emilyalsentzer/Bio_ClinicalBERT"
+            logger.info(f"Initializing embedding model: {model_name}")
+            
+            # Determine if CUDA is available for GPU acceleration
+            device = 'cuda' if torch.cuda.is_available() else 'cpu'
+            model = HuggingFaceEmbeddings(
+                model_name=model_name,
+                model_kwargs={'device': device},
+                encode_kwargs={'normalize_embeddings': True}
+            )
+            self.embedding_model = STEncoder(model)
+        
+        # Generate embeddings for all terms in the batch
+        terms = [item['term'] for item in batch if 'term' in item and item['term']]
+        if terms:
+            try:
+                embeddings = self.embedding_model.embed_documents(terms)
+                
+                # Add embeddings to the batch items
+                embedding_idx = 0
+                for item in batch:
+                    if 'term' in item and item['term']:
+                        item['embedding'] = embeddings[embedding_idx]
+                        embedding_idx += 1
+            except Exception as e:
+                logger.warning(f"Error generating embeddings: {str(e)}")
+                # Continue without embeddings if there's an error
+        
         while retries < max_retries:
             try:
                 cypher = """
@@ -340,7 +390,8 @@ class UMLSProcessor(BaseProcessor, DatabaseMixin):
                     c.domain = item.domain,
                     c.source = item.source,
                     c.priority = item.priority,
-                    c.created_at = item.created_at
+                    c.created_at = item.created_at,
+                    c.embedding = item.embedding
                 """
                 self.graph.query(cypher, {'batch': batch})
                 return
@@ -1746,3 +1797,295 @@ class UMLSProcessor(BaseProcessor, DatabaseMixin):
                 'duplicates_removed': False,
                 'error': str(e)
             }
+
+    def create_vector_index(self):
+        """Create a vector index for concept embeddings"""
+        try:
+            logger.info("Creating vector index for concept embeddings...")
+            
+            # Check if Neo4j version supports vector indexes
+            version_query = "CALL dbms.components() YIELD name, versions RETURN versions[0] as version"
+            result = self._execute_query_with_retry(version_query)
+            neo4j_version = result[0]['version'] if result else ""
+            
+            logger.info(f"Neo4j version: {neo4j_version}")
+            
+            # Try standard method first
+            try:
+                index_query = """
+                CALL db.index.vector.createNodeIndex(
+                    'concept_embeddings',
+                    'Concept',
+                    'embedding',
+                    768,
+                    'cosine'
+                )
+                """
+                self._execute_query_with_retry(index_query)
+                logger.info("Vector index 'concept_embeddings' created successfully")
+                return True
+            except Exception as e:
+                logger.warning(f"Standard vector index creation failed: {str(e)}")
+                
+                # Try alternative method with Aura
+                try:
+                    index_query = """
+                    CREATE VECTOR INDEX concept_embeddings IF NOT EXISTS
+                    FOR (c:Concept)
+                    ON (c.embedding)
+                    OPTIONS {indexConfig: {
+                        `vector.dimensions`: 768,
+                        `vector.similarity_function`: 'cosine'
+                    }}
+                    """
+                    self._execute_query_with_retry(index_query)
+                    logger.info("Vector index created using alternative method")
+                    return True
+                except Exception as e2:
+                    logger.error(f"Alternative vector index creation failed: {str(e2)}")
+                    return False
+        
+        except Exception as e:
+            logger.error(f"Error creating vector index: {str(e)}")
+            return False
+
+    def add_embeddings_to_existing_concepts(self, batch_size=200):
+        """Add embeddings to existing concepts that don't have them"""
+        try:
+            # Initialize HuggingFace model for embeddings
+            model_name = "emilyalsentzer/Bio_ClinicalBERT"
+            logger.info(f"Initializing embedding model: {model_name}")
+            
+            # Determine if CUDA is available for GPU acceleration
+            device = 'cuda' if torch.cuda.is_available() else 'cpu'
+            model = HuggingFaceEmbeddings(
+                model_name=model_name,
+                model_kwargs={'device': device},
+                encode_kwargs={'normalize_embeddings': True}
+            )
+            
+            # Create a custom encoder using the HuggingFace model
+            encoder = STEncoder(model)
+            
+            # Count concepts without embeddings
+            count_query = """
+                MATCH (c:Concept)
+                WHERE c.term IS NOT NULL AND c.embedding IS NULL
+                RETURN count(c) as count
+            """
+            result = self.graph.query(count_query)
+            total_concepts = result[0]['count'] if result else 0
+            
+            if total_concepts == 0:
+                logger.info("No concepts found that need embeddings")
+                return 0
+            
+            logger.info(f"Found {total_concepts} concepts that need embeddings")
+            
+            # Process in batches
+            processed = 0
+            batch_num = 0
+            
+            while processed < total_concepts:
+                batch_num += 1
+                
+                # Fetch batch
+                batch_query = """
+                    MATCH (c:Concept)
+                    WHERE c.term IS NOT NULL AND c.embedding IS NULL
+                    RETURN c.cui as cui, c.term as term
+                    LIMIT $batch_size
+                """
+                
+                batch = self.graph.query(batch_query, {'batch_size': batch_size})
+                
+                if not batch:
+                    break
+                    
+                # Create embeddings
+                terms = [item['term'] for item in batch]
+                cuis = [item['cui'] for item in batch]
+                
+                logger.info(f"Generating embeddings for batch {batch_num} ({len(terms)} concepts)")
+                embeddings = encoder.embed_documents(terms)
+                
+                # Update with embeddings
+                update_query = """
+                    UNWIND $data as item
+                    MATCH (c:Concept {cui: item.cui})
+                    SET c.embedding = item.embedding
+                """
+                
+                data = [
+                    {'cui': cui, 'embedding': embedding}
+                    for cui, embedding in zip(cuis, embeddings)
+                ]
+                
+                self.graph.query(update_query, {'data': data})
+                
+                processed += len(batch)
+                logger.info(f"Progress: {processed}/{total_concepts} concepts processed")
+                
+                # Prevent overloading the server
+                time.sleep(0.5)
+            
+            logger.info(f"Completed adding embeddings to {processed} concepts")
+            return processed
+            
+        except Exception as e:
+            logger.error(f"Error adding embeddings to existing concepts: {str(e)}")
+            raise
+
+    def vector_similarity_search(self, query_text, limit=10, score_threshold=0.6):
+        """Search for concepts by vector similarity"""
+        try:
+            # Initialize the embedding model
+            model_name = "emilyalsentzer/Bio_ClinicalBERT"
+            device = 'cuda' if torch.cuda.is_available() else 'cpu'
+            model = HuggingFaceEmbeddings(
+                model_name=model_name,
+                model_kwargs={'device': device},
+                encode_kwargs={'normalize_embeddings': True}
+            )
+            encoder = STEncoder(model)
+            
+            # Get query embedding
+            query_embedding = encoder.embed_query(query_text)
+            
+            # Execute vector search
+            cypher = """
+            CALL db.index.vector.queryNodes(
+                'concept_embeddings',
+                $limit,
+                $embedding
+            ) YIELD node, score
+            WHERE score >= $threshold
+            RETURN 
+                node.cui as cui,
+                node.term as term,
+                node.semantic_type as semantic_type,
+                node.domain as domain,
+                score
+            ORDER BY score DESC
+            """
+            
+            try:
+                results = self.graph.query(cypher, {
+                    'embedding': query_embedding,
+                    'limit': limit,
+                    'threshold': score_threshold
+                })
+                
+                return [dict(record) for record in results]
+                
+            except Exception as e:
+                logger.warning(f"Vector index search failed: {str(e)}")
+                
+                # Fallback to manual similarity search for older Neo4j versions
+                logger.info("Falling back to manual similarity calculation")
+                
+                fallback_query = """
+                MATCH (c:Concept)
+                WHERE c.embedding IS NOT NULL AND c.term IS NOT NULL
+                RETURN c.cui as cui, c.term as term, c.embedding as embedding,
+                       c.semantic_type as semantic_type, c.domain as domain
+                LIMIT 1000
+                """
+                
+                candidates = self.graph.query(fallback_query)
+                
+                # Calculate cosine similarity manually
+                results = []
+                for c in candidates:
+                    if c['embedding'] is None:
+                        continue
+                    
+                    # Calculate cosine similarity
+                    similarity = self._cosine_similarity(query_embedding, c['embedding'])
+                    
+                    if similarity >= score_threshold:
+                        results.append({
+                            'cui': c['cui'],
+                            'term': c['term'],
+                            'semantic_type': c['semantic_type'],
+                            'domain': c['domain'],
+                            'score': similarity
+                        })
+                
+                # Sort by score and limit results
+                results.sort(key=lambda x: x['score'], reverse=True)
+                return results[:limit]
+        
+        except Exception as e:
+            logger.error(f"Error in vector similarity search: {str(e)}")
+            return []
+
+    def _cosine_similarity(self, vec1, vec2):
+        """Calculate cosine similarity between two vectors"""
+        # Convert to numpy arrays if they're lists
+        if isinstance(vec1, list):
+            vec1 = np.array(vec1)
+        if isinstance(vec2, list):
+            vec2 = np.array(vec2)
+        
+        # Calculate cosine similarity
+        dot_product = np.dot(vec1, vec2)
+        norm_a = np.linalg.norm(vec1)
+        norm_b = np.linalg.norm(vec2)
+        
+        if norm_a == 0 or norm_b == 0:
+            return 0
+        
+        return dot_product / (norm_a * norm_b)
+
+    def hybrid_search(self, query_text, keyword_limit=5, vector_limit=10, score_threshold=0.6):
+        """Perform both keyword and vector search and combine results"""
+        try:
+            # Get keyword results
+            keyword_results = self.search_concepts(query_text, limit=keyword_limit)
+            
+            # Get vector results
+            vector_results = self.vector_similarity_search(
+                query_text, 
+                limit=vector_limit,
+                score_threshold=score_threshold
+            )
+            
+            # Combine results, preserving uniqueness by CUI
+            combined = {}
+            
+            # Add keyword results with default score
+            for item in keyword_results:
+                cui = item['cui']
+                combined[cui] = {
+                    **item,
+                    'score': 1.0,
+                    'source': 'keyword'
+                }
+            
+            # Add vector results
+            for item in vector_results:
+                cui = item['cui']
+                
+                if cui not in combined:
+                    combined[cui] = {
+                        **item,
+                        'source': 'vector'
+                    }
+                else:
+                    # If already exists from keyword search, keep the higher score
+                    combined[cui] = {
+                        **combined[cui],
+                        'score': max(combined[cui].get('score', 0), item.get('score', 0)),
+                        'source': 'hybrid'
+                    }
+            
+            # Convert to list and sort by score
+            results = list(combined.values())
+            results.sort(key=lambda x: x['score'], reverse=True)
+            
+            return results[:vector_limit]
+            
+        except Exception as e:
+            logger.error(f"Error in hybrid search: {str(e)}")
+            return []

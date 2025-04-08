@@ -237,7 +237,6 @@ def main():
     2. Retrieves relevant medical concepts from a knowledge graph
     3. Extracts textbook passages from a vector database
     4. Generates three types of answers for comparison
-    5. Evaluates and visualizes answer quality
     """)
     
     # Main content
@@ -294,7 +293,6 @@ def main():
                 "🔍 Answers", 
                 "📚 Knowledge Graph", 
                 "📖 Textbook Passages", 
-                "📊 Evaluation Metrics",
                 "🕸️ Graph Visualization"
             ])
             
@@ -398,84 +396,8 @@ def main():
                 else:
                     st.write("No textbook passages retrieved.")
             
-            # Tab 4: Evaluation Metrics
+            # Tab 4: Graph Visualization
             with tabs[3]:
-                st.markdown("## Evaluation Metrics")
-                
-                # Display metrics tables
-                metrics_df, additional_metrics = format_metrics_table(evaluation)
-                if not metrics_df.empty:
-                    st.markdown("### Answer Quality Metrics")
-                    st.dataframe(metrics_df)
-                    
-                    st.markdown("### Additional Metrics")
-                    st.dataframe(additional_metrics)
-                
-                # Display visualizations
-                col1, col2 = st.columns(2)
-                
-                with col1:
-                    st.markdown("### Answer Quality Comparison")
-                    fig = plot_metrics_comparison(evaluation)
-                    if fig:
-                        st.pyplot(fig)
-                
-                with col2:
-                    st.markdown("### Evidence vs Correctness")
-                    fig = plot_evidence_vs_correctness(evaluation)
-                    if fig:
-                        st.pyplot(fig)
-                
-                # Processing Time Information
-                st.markdown("### Processing Time Breakdown")
-                timing_info = result['timing']
-                
-                timing_df = pd.DataFrame({
-                    'Stage': [
-                        'Term Extraction', 
-                        'Concept Retrieval', 
-                        'Concept Reranking',
-                        'Relationship Retrieval',
-                        'Relationship Reranking',
-                        'Multihop Path Finding',
-                        'Multihop Reranking',
-                        'Pinecone Retrieval',
-                        'LLM Answer Generation',
-                        'Total Processing'
-                    ],
-                    'Time (seconds)': [
-                        timing_info.get('term_extraction', 0),
-                        timing_info.get('concept_retrieval', 0),
-                        timing_info.get('concept_reranking', 0),
-                        timing_info.get('relationship_retrieval', 0),
-                        timing_info.get('relationship_reranking', 0),
-                        timing_info.get('multihop_path_finding', 0),
-                        timing_info.get('multihop_reranking', 0),
-                        timing_info.get('pinecone_retrieval', 0),
-                        timing_info.get('llm_informed_generation', 0),
-                        timing_info.get('total_processing', 0)
-                    ]
-                })
-                
-                st.dataframe(timing_df)
-                
-                # Create a pie chart of processing time
-                fig, ax = plt.subplots(figsize=(8, 8))
-                labels = timing_df['Stage'][:-1]  # Exclude total
-                sizes = timing_df['Time (seconds)'][:-1]
-                
-                # Only include non-zero times
-                non_zero_indices = [i for i, size in enumerate(sizes) if size > 0]
-                labels = [labels[i] for i in non_zero_indices]
-                sizes = [sizes[i] for i in non_zero_indices]
-                
-                ax.pie(sizes, labels=labels, autopct='%1.1f%%', startangle=90)
-                ax.axis('equal')  # Equal aspect ratio ensures that pie is drawn as a circle
-                plt.title('Processing Time Distribution')
-                st.pyplot(fig)
-            
-            # Tab 5: Graph Visualization
-            with tabs[4]:
                 st.markdown("## Knowledge Graph Visualization")
                 
                 # Extract nodes and edges from the knowledge graph data

@@ -1,7 +1,7 @@
 import sys
 from pathlib import Path
 import os
-from typing import Dict, List, Any, Optional, Tuple
+from typing import Dict, List, Any, Optional, Tuple, Union
 import json
 import time
 import pandas as pd
@@ -12,7 +12,7 @@ from dotenv import load_dotenv
 from langchain_neo4j import Neo4jGraph
 from openai import OpenAI
 import logging
-from sentence_transformers import SentenceTransformer
+from sentence_transformers import SentenceTransformer, util
 from sklearn.metrics.pairwise import cosine_similarity
 from transformers import AutoTokenizer, AutoModel
 import concurrent.futures
@@ -344,7 +344,7 @@ class KnowledgeGraphEvaluator:
                 for j, result in enumerate(debug_results[:5]):  # Log first 5 results
                     logger.info(f"DEBUG:   Result {j}: CUI={result.get('cui', 'None')}, Term='{result.get('term', 'None')}'")
             
-            # Now execute the combined query
+            
             direct_query = """
                 MATCH (c:Concept)
             WHERE toLower(c.term) IN $terms OR 
@@ -402,7 +402,7 @@ class KnowledgeGraphEvaluator:
                 for j, result in enumerate(debug_med_results[:5]):
                     logger.info(f"DEBUG:   Med Result {j}: CUI={result.get('cui', 'None')}, Term='{result.get('term', 'None')}'")
             
-            # Execute combined medication query
+           
             direct_med_query = """
             MATCH (c:Concept) 
             WHERE toLower(c.term) IN $terms OR
@@ -465,7 +465,7 @@ class KnowledgeGraphEvaluator:
             MATCH (c:Concept)
             OPTIONAL MATCH (c)-[:HAS_DEFINITION]->(d)
             RETURN c.cui as cui, c.term as term, d.text as definition, c.embedding as embedding
-            LIMIT 10000
+            LIMIT 2000
             """
             concept_data = self.graph.query(concept_query)
             concept_terms = [c["term"] for c in concept_data if c.get("term")]
@@ -544,7 +544,7 @@ class KnowledgeGraphEvaluator:
         
         # Return the list of unique concepts
         return list(unique_concepts.values())
-
+            
     def get_relationships(self, concepts: List[Dict]) -> List[Dict]:
         """Get all relationships between found concepts without filtering by relationship type"""
         try:
@@ -1084,8 +1084,8 @@ class KnowledgeGraphEvaluator:
         # Enhanced LLM prompt for citation quality assessment
         prompt = f"""
         Evaluate the citation quality in this medical answer:
-
-        Answer with citations:
+        
+        Answer with citations: 
         {answer}
 
         Citation Statistics:
@@ -1093,28 +1093,28 @@ class KnowledgeGraphEvaluator:
         - Valid citations: {citation_stats['valid_citations']}
         - Invalid citations: {citation_stats['invalid_citations']}
         - Citation density: {citation_stats['citation_density']:.2f} per 100 words
-
+        
         Knowledge Graph Data that was available:
         {concise_kg_data}
-
+        
         Please analyze:
         1. Are claims properly supported by relevant citations?
         2. Are the citations used in a way that shows understanding of the medical connections?
         3. Does each major claim have a citation?
         4. Are unsupported claims clearly marked as limitations?
-
+        
         Return a JSON with:
         {{
-        "total_claims": number,
-        "cited_claims": number,
+          "total_claims": number,
+          "cited_claims": number,
         "accurate_citations": number (citations that actually support the claim),
-        "citation_accuracy": percentage,
-        "unsupported_claims": number,
+          "citation_accuracy": percentage,
+          "unsupported_claims": number,
         "citation_quality_score": 0-10,
         "reasoning": "explanation of the score"
         }}
         """
-
+        
         response = self.llm(prompt)
         try:
             # Fix JSON extraction with proper regex pattern
@@ -1127,7 +1127,7 @@ class KnowledgeGraphEvaluator:
                 json_text = response.split("```")[1].split("```")[0].strip()
             else:
                 json_text = response.strip()
-
+                
             return json.loads(json_text)
         except Exception as e:
             logger.error(f"Error parsing citation evaluation: {str(e)}")
@@ -1388,7 +1388,7 @@ class KnowledgeGraphEvaluator:
                     except Exception as e:
                         logger.error(f"Error processing question: {str(e)}")
         else:
-            # Process questions sequentially
+                    # Process questions sequentially
             for question in tqdm(questions, desc="Evaluating questions"):
                 question_result = self.run_ablation_study(question)
                 results.append(question_result)
@@ -1401,7 +1401,7 @@ class KnowledgeGraphEvaluator:
                     json.dump(results, f, indent=2)
             
             return results
-    
+        
     def summarize_results(self) -> Dict:
         """Summarize evaluation results"""
         if not self.results:
@@ -2158,6 +2158,242 @@ class KnowledgeGraphEvaluator:
                 "analysis": f"Error evaluating contribution: {str(e)}"
             }
 
+    def evaluate_hybrid_answer(self, answer: str, question_dict: Dict, kg_data: Dict) -> Dict:
+        """
+        Evaluate an answer using a hybrid approach combining semantic similarity for correctness (40%)
+        and LLM-based evaluation for evidence quality (60%)
+        """
+        # Get evidence quality metrics (60%)
+        evidence_metrics = self.evaluate_evidence_quality(answer, kg_data)
+        
+        # Get correctness metrics using semantic similarity (40%)
+        correctness_metrics = self.evaluate_correctness_with_similarity(answer, question_dict)
+        
+        # Calculate the combined score
+        combined_score = self.calculate_hybrid_score(evidence_metrics, correctness_metrics)
+        
+        return combined_score
+
+    def evaluate_correctness_with_similarity(self, answer, question_dict):
+        """Evaluate correctness using binary scoring with improved answer extraction and comparison"""
+        # Basic validation
+        if not answer or not question_dict:
+            return {"score": 0, "explanation": "Missing answer or question data"}
+
+        # Extract ground truth
+        ground_truth = question_dict.get("answer", "").strip()
+        options = question_dict.get("options", [])
+        
+        # Extract candidate answer
+        extracted_answer = self._extract_answer_choice(answer)
+        
+        # Map option letters to text if necessary
+        option_mapping = {}
+        if isinstance(options, list):
+            for i, option_text in enumerate(options):
+                letter = chr(65 + i)  # A, B, C, etc.
+                option_mapping[letter] = option_text
+                option_mapping[f"{letter}."] = option_text
+        elif isinstance(options, dict):
+            option_mapping = options
+        
+        # If extracted answer is just a letter, map it to text
+        is_letter_answer = False
+        answer_text = extracted_answer
+        
+        # Check if the extracted answer is a letter (A, B, C, etc.)
+        if re.match(r'^[A-Za-z]\.?$', extracted_answer):
+            is_letter_answer = True
+            letter = extracted_answer.replace(".", "").upper()
+            if letter in option_mapping:
+                answer_text = option_mapping[letter]
+            else:
+                return {"score": 0, "explanation": f"Answer '{extracted_answer}' is not a valid option letter"}
+        
+        # Check for exact match (case-insensitive)
+        exact_match = False
+        
+        # Compare with ground truth
+        if ground_truth.lower() == answer_text.lower():
+            exact_match = True
+        
+        # If not an exact match, also check if the letter matches
+        if not exact_match and not is_letter_answer:
+            # Try to find the matching letter for the text answer
+            matching_letter = None
+            for letter, text in option_mapping.items():
+                if text.lower() == answer_text.lower():
+                    matching_letter = letter
+                    break
+            
+            # Check if the ground truth might be provided as a letter
+            if matching_letter and (ground_truth.upper() == matching_letter.upper() or 
+                                    ground_truth.upper() == matching_letter.upper() + '.'):
+                exact_match = True
+        
+        # Also check if ground truth is a letter and our answer is text
+        if not exact_match and not is_letter_answer:
+            if ground_truth.upper() in option_mapping:
+                if answer_text.lower() == option_mapping[ground_truth.upper()].lower():
+                    exact_match = True
+
+        # Binary scoring - 10 if correct, 0 if wrong
+        if exact_match:
+            explanation = f"The answer '{extracted_answer}' correctly matches the ground truth '{ground_truth}'."
+            return {"score": 10.0, "explanation": explanation}
+        else:
+            explanation = f"The answer '{extracted_answer}' does not match the ground truth '{ground_truth}'."
+            return {"score": 0.0, "explanation": explanation}
+
+    def _extract_answer_choice(self, answer: str) -> str:
+        """Extract answer choice from text with improved detection of various formats"""
+        if not answer:
+            return ""
+            
+        # Search for patterns that indicate an answer choice
+        patterns = [
+            # Direct answer statements
+            r"(?i)answer(?:\s+choice)?[\s:]+(.*?)(?:\.|$|\n)",
+            r"(?i)the\s+(?:correct\s+)?answer\s+is\s+(.*?)(?:\.|$|\n)",
+            r"(?i)I\s+(?:would\s+)?choose\s+(.*?)(?:\.|$|\n)",
+            
+            # Option letters
+            r"(?i)option\s+([A-Z])(?:\.|$|\n)",
+            r"(?i)answer\s+(?:is\s+)?([A-Z])(?:\.|$|\n)",
+            
+            # Markdown formatting (e.g., **C)
+            r"\*\*\s*([A-Z])[.\s\*]*",
+            
+            # Finding bold text patterns
+            r"\*\*([^*]+)\*\*"
+        ]
+        
+        for pattern in patterns:
+            matches = re.search(pattern, answer)
+            if matches:
+                extracted = matches.group(1).strip()
+                
+                # If we got a longer phrase, check if it starts with a letter answer
+                letter_match = re.match(r'^([A-Z])[\.\s)]', extracted)
+                if letter_match:
+                    return letter_match.group(1)
+                    
+                # Otherwise return the full extracted text
+                return extracted
+        
+        # If no pattern matched, try to extract any letter that appears to be highlighted or emphasized
+        emphasized = re.findall(r'[^a-zA-Z]([A-Z])[^a-zA-Z]', answer)
+        if emphasized:
+            # Count occurrences of each letter
+            letter_counts = {}
+            for letter in emphasized:
+                letter_counts[letter] = letter_counts.get(letter, 0) + 1
+            
+            # Get the most frequently emphasized letter
+            if letter_counts:
+                most_common = max(letter_counts.items(), key=lambda x: x[1])
+                return most_common[0]
+        
+        # If all else fails, look for any standalone option letters
+        option_letters = re.findall(r'(?:^|\s+)([A-Z])\.', answer)
+        if option_letters:
+            return option_letters[0]
+            
+        # Fallback: Return the first 50 chars
+        return answer[:50] + "..."
+
+    def calculate_hybrid_score(self, evidence_metrics: Dict, correctness_metrics: Dict) -> Dict:
+        """Calculate final score with hybrid approach - 60% evidence, 40% correctness"""
+        # Evidence Quality (60%) - using existing sub-metrics
+        evidence_score = (
+            evidence_metrics['citation_density'] * SUB_METRICS['evidence_quality']['citation_density'] +
+            evidence_metrics['source_diversity'] * SUB_METRICS['evidence_quality']['source_diversity'] +
+            evidence_metrics['conflict_resolution'] * SUB_METRICS['evidence_quality']['conflict_resolution'] +
+            evidence_metrics['traceability'] * SUB_METRICS['evidence_quality']['traceability']
+        ) * 10  # Scale to 0-10
+
+        # Correctness (40%) - using semantic similarity approach
+        correctness_score = (
+            correctness_metrics['factual_accuracy'] * SUB_METRICS['correctness']['factual_accuracy'] +
+            correctness_metrics['error_detection'] * SUB_METRICS['correctness']['error_detection']
+        ) * 10
+
+        # Combined score with weights (60% evidence, 40% correctness)
+        combined_score = (
+            (evidence_score * 0.6) +
+            (correctness_score * 0.4)
+        )
+        
+        # Bonus for handling conflicts and citing evidence
+        if evidence_metrics['conflict_resolution'] > 0.5 and correctness_metrics['factual_accuracy'] > 0.8:
+            combined_score = min(10.0, combined_score + 0.5)
+        
+        return {
+            'evidence_score': round(evidence_score, 2),
+            'correctness_score': round(correctness_score, 2),
+            'combined_score': round(combined_score, 2),
+            'evidence_quality_details': evidence_metrics,
+            'correctness_details': correctness_metrics
+        }
+
+    def run_hybrid_evaluation(self, questions: List[Dict] = None, n: int = None) -> Dict:
+        """Run evaluation using the hybrid approach"""
+        if not questions:
+            questions = self.load_test_questions(n=n or self.settings["test_size"])
+        
+        results = []
+        
+        for question in tqdm(questions, desc="Evaluating with hybrid approach"):
+            try:
+                # Extract terms from question
+                extracted_terms = self.extract_key_terms(question["question"])
+                
+                # Get concepts, relationships, and paths
+                concepts = self.get_concepts(extracted_terms)
+                relationships = self.get_relationships(concepts)
+                multihop_paths = self.find_multihop_paths(concepts)
+                
+                # Generate answer with KG data
+                kg_data = self.format_kg_data(concepts, relationships, multihop_paths)
+                answer = self.generate_answer(question["question"], concepts, relationships, multihop_paths)
+                
+                # Run hybrid evaluation
+                evaluation = self.evaluate_hybrid_answer(answer, question, kg_data)
+                
+                # Store results
+                result = {
+                    "question_id": question.get("id", "unknown"),
+                    "question": question["question"],
+                    "answer": answer,
+                    "correct_answer": question.get("answer", ""),
+                    "evaluation": evaluation,
+                    "kg_stats": {
+                        "concepts_count": len(concepts),
+                        "relationships_count": len(relationships),
+                        "multihop_paths_count": len(multihop_paths) if multihop_paths else 0
+                    }
+                }
+                
+                results.append(result)
+                
+            except Exception as e:
+                logger.error(f"Error processing question: {str(e)}")
+        
+        # Calculate overall statistics
+        evidence_scores = [r["evaluation"]["evidence_score"] for r in results]
+        correctness_scores = [r["evaluation"]["correctness_score"] for r in results]
+        combined_scores = [r["evaluation"]["combined_score"] for r in results]
+        
+        summary = {
+            "questions_evaluated": len(results),
+            "average_evidence_score": np.mean(evidence_scores),
+            "average_correctness_score": np.mean(correctness_scores),
+            "average_combined_score": np.mean(combined_scores),
+            "results": results
+        }
+        
+        return summary
+
 def main():
     """Run the knowledge graph evaluation with optimized performance"""
     try:
@@ -2223,6 +2459,27 @@ def main():
         
     except Exception as e:
         logger.error(f"Error in evaluation: {str(e)}", exc_info=True)
+    
+    # Load medical questions
+    questions = []
+    with open("usmle_categorized_questions.json", "r") as f:
+        questions = json.load(f)
+    
+    # Run hybrid evaluation
+    print("Running hybrid evaluation...")
+    hybrid_results = evaluator.run_hybrid_evaluation(questions=questions, n=10)
+    
+    # Print results
+    print(f"\nEvaluation Results (n={hybrid_results['questions_evaluated']}):")
+    print(f"Average Evidence Score: {hybrid_results['average_evidence_score']:.2f}/10")
+    print(f"Average Correctness Score: {hybrid_results['average_correctness_score']:.2f}/10")
+    print(f"Average Combined Score: {hybrid_results['average_combined_score']:.2f}/10")
+    
+    # Save detailed results
+    with open("hybrid_evaluation_results.json", "w") as f:
+        json.dump(hybrid_results, f, indent=2)
+    
+    print("\nDetailed results saved to hybrid_evaluation_results.json")
     
 if __name__ == "__main__":
     main()

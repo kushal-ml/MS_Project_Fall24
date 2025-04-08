@@ -45,6 +45,7 @@ except ImportError:
     class KnowledgeGraphEvaluator:
         def __init__(self, *args, **kwargs):
             self.settings = {}
+            
             print("Using dummy KnowledgeGraphEvaluator.")
         def extract_key_terms(self, text): return ["dummy_term"]
         def get_concepts(self, terms): return [{"cui": "C000000", "term": "Dummy Concept", "definition": "A placeholder."}]
@@ -58,6 +59,7 @@ except ImportError:
         def evaluate_kg_coverage(self, *args): return {"coverage_percentage": 0}
         def evaluate_kg_contribution(self, *args): return {"value_added_score": 0}
 
+        
 
 # Set up logging
 logging.basicConfig(
@@ -232,8 +234,31 @@ class KnowledgeGraphRetriever(BaseRetriever):
 
 
 class USMLEProcessor:
-    def __init__(self):
+    def __init__(self, question_file: str = None):
         logger.info("Initializing USMLEProcessor with LangChain...")
+        self.benchmark_questions = [
+            {
+                "id": "q1",
+                "question": "A 45-year-old man presents with crushing chest pain for 2 hours. ECG shows ST elevation in leads II, III, and aVF. Which artery is most likely occluded?",
+                "answer": "Right coronary artery",
+                "options": ["Right coronary artery", "Left anterior descending artery", "Left circumflex artery", "Left main coronary artery", "Posterior descending artery"],
+                "difficulty": "medium"
+            },
+            {
+                "id": "q2",
+                "question": "A 67-year-old woman with congenital bicuspid aortic valve is admitted with fever and systolic murmur. Blood cultures show viridans streptococci. What antibiotic synergistic to penicillin would help shorten treatment duration?",
+                "answer": "Gentamicin",
+                "options": ["Gentamicin", "Ceftriaxone", "Vancomycin", "Ciprofloxacin", "Linezolid"],
+                "difficulty": "hard"
+            },
+            {
+                "id": "q3",
+                "question": "A 32-year-old woman with type 1 diabetes mellitus has had progressive renal failure during the past 2 years. She has not yet started dialysis. Examination shows no abnormalities. Her hemoglobin concentration is 9 g/dL, hematocrit is 28%, and mean corpuscular volume is 94 μm3. A blood smear shows normochromic, normocytic cells. Which of the following is the most likely cause?",
+                "answer": "Erythropoietin deficiency",
+                "options": ["Acute blood loss", "Chronic lymphocytic leukemia", "Erythrocyte enzyme deficiency", "Erythropoietin deficiency", "Immunohemolysis"],
+                "difficulty": "medium"
+            }
+        ]
         # Load environment variables (redundant if loaded globally, but safe)
         load_dotenv()
 
@@ -449,6 +474,21 @@ class USMLEProcessor:
         self.rag_chain = self._build_rag_chain()
         logger.info("Built the main RAG chain using LCEL.")
 
+        # Load benchmark questions
+        self.load_benchmark_questions(question_file)
+
+    def load_benchmark_questions(self, file_path: str = None):
+        """Load benchmark questions from file or use defaults"""
+        if file_path and os.path.exists(file_path):
+            try:
+                with open(file_path, 'r') as f:
+                    self.benchmark_questions = json.load(f)
+            except Exception as e:
+                logger.error(f"Error loading benchmark questions from file: {str(e)}")
+                # Fall back to default questions
+                logger.info("Using default benchmark questions")
+        else:
+            logger.info("No question file provided, using default benchmark questions")
 
     def _combine_similar_chunks(self, chunks: List[Dict], similarity_threshold=0.3) -> List[Dict]:
         """Combine similar text chunks into coherent passages. (Copied from original)"""
@@ -1339,93 +1379,52 @@ class USMLEProcessor:
 
 
     def run_benchmark_evaluation(self):
-        """Run evaluation on a set of benchmark USMLE questions (Largely Unchanged)"""
-        logger.info("Starting benchmark evaluation...")
-        benchmark_dir = os.path.join(self.kg_evaluator.settings.get("visualization_dir", "kg_evaluation"), "benchmark")
-        os.makedirs(benchmark_dir, exist_ok=True)
-
-        benchmark_questions = get_benchmark_usmle_questions()
-        logger.info(f"Processing {len(benchmark_questions)} benchmark questions")
-
-        # Clear previous results before benchmark run
-        self.evaluation_results = []
-        results_list = [] # Store results from this run
-
-        for i, question_data in enumerate(tqdm(benchmark_questions, desc="Benchmark Questions")):
-            logger.info(f"Processing benchmark question {i+1}/{len(benchmark_questions)}: {question_data['id']}")
-            try:
-                # Process the question using the LangChain pipeline
-                result = self.process_question(question_data) # Pass the whole dict
-
-                # Evaluate the answer (evaluation adds result to self.evaluation_results)
-                self.evaluate_evidence_based_answer(result)
-
-                # Add the result to our list for this run
-                results_list.append(result)
-
-                logger.info(f"Completed processing question {i+1}: {question_data['id']}")
-                # Optional: Wait between calls if rate limits are a concern
-                # time.sleep(1)
-
-            except Exception as e:
-                logger.error(f"Error processing benchmark question {question_data['id']}: {str(e)}", exc_info=True)
-                # Add a placeholder if needed, or just skip
-                results_list.append({
-                    "question_id": question_data.get('id'),
-                    "question": question_data.get('question'),
-                    "error": str(e)
-                    })
-
-        # Ensure LangSmith traces are flushed
-        wait_for_all_tracers()
-
-        # Generate summary statistics (using the accumulated self.evaluation_results)
-        questions_evaluated = len(self.evaluation_results) # Count successful evaluations
-        if questions_evaluated == 0:
-            logger.warning("No benchmark questions were successfully processed and evaluated.")
-            return {"questions_evaluated": 0, "error": "No questions were successfully processed"}
-
-        summary = self.summarize_evaluation_results()
-
-        # Save results to file
-        results_path = os.path.join(benchmark_dir, "benchmark_results_langchain.json")
+        """Run benchmark evaluation with proper result handling"""
         try:
-            # Create a simplified version for storage, using self.evaluation_results
-            simplified_results_for_json = []
-            for r in self.evaluation_results: # Use the stored results which include 'evaluation'
-                eval_data = r.get("evaluation", {})
-                simplified_results_for_json.append({
-                    "question_id": eval_data.get("question_id", r.get("question_id", "unknown")),
-                    "question": r.get("question", ""),
-                    "difficulty": r.get("difficulty", "unknown"),
-                    "category": r.get("category", "unknown"),
-                    "processing_time": r.get("processing_time", 0),
-                    "kg_coverage": eval_data.get("kg_coverage", {}).get("coverage_percentage", 0),
-                    "evidence_based_evaluation": eval_data.get("evidence_based_evaluation", {}),
-                    "context_contribution": eval_data.get("context_contribution", {})
-                })
-
-            with open(results_path, 'w') as f:
-                json.dump({
-                    "summary": summary,
-                    "results": simplified_results_for_json # Use the simplified list
-                }, f, indent=2)
-            logger.info(f"Benchmark results saved to {results_path}")
+            results = []
+            total_questions = len(self.benchmark_questions)
+            
+            for question in tqdm(self.benchmark_questions, desc="Processing Questions"):
+                try:
+                    result = self.process_question(question)
+                    results.append(result)
+                except Exception as e:
+                    logger.error(f"Error processing question {question.get('id', 'unknown')}: {str(e)}")
+                    continue
+            
+            # Format results as a dictionary instead of a list
+            benchmark_summary = {
+                "questions_evaluated": len(results),
+                "total_questions": total_questions,
+                "success_rate": len(results) / total_questions * 100,
+                "results": results
+            }
+            
+            return benchmark_summary
+            
         except Exception as e:
-             logger.error(f"Failed to save benchmark results to {results_path}: {e}")
+            logger.error(f"Benchmark run failed: {str(e)}")
+            return {
+                "questions_evaluated": 0,
+                "total_questions": 0,
+                "success_rate": 0,
+                "results": [],
+                "error": str(e)
+            }
 
 
-        # Generate visualizations (based on self.evaluation_results)
-        self.generate_visualizations() # This uses self.evaluation_results
-
-        # Generate category and difficulty analysis (pass the evaluated results)
-        self._generate_benchmark_analysis(self.evaluation_results, benchmark_dir)
-
-        return {
-            "questions_evaluated": questions_evaluated,
-            "summary": summary,
-            "results_path": results_path
-        }
+    def save_benchmark_results(self, results: List[Dict]):
+        """Save benchmark results to disk"""
+        try:
+            output_dir = "benchmark_results"
+            os.makedirs(output_dir, exist_ok=True)
+            
+            output_file = os.path.join(output_dir, "benchmark_results.json")
+            with open(output_file, 'w') as f:
+                json.dump(results, f, indent=2)
+            
+        except Exception as e:
+            logger.error(f"Error saving benchmark results: {str(e)}")
 
     def _generate_benchmark_analysis(self, evaluated_results, benchmark_dir):
         """Generate additional analysis by category and difficulty (Largely Unchanged)"""
