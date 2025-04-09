@@ -1,4 +1,10 @@
 # Environment variables
+.env/
+venv/
+.venv/
+env/
+
+#API file
 .env
 
 # UMLS Data Files
@@ -13,6 +19,17 @@ Week14/medical_knowledge_graph/data/raw/umls/MRSAT.RRF
 # Processed data directory
 Week14/medical_knowledge_graph/data/processed/
 Week14/medical_knowledge_graph/data/processed/*
+Week14/medical_knowledge_graph/data/raw/processed/*
+#MedQA Embeddings
+Week14/medical_knowledge_graph/chroma_data/*
+Week14/.DS_Store
+Week14/medical_knowledge_graph/.DS_Store
+Week14/medical_knowledge_graph/data/.DS_Store
+Week14/medical_knowledge_graph/data/raw/.DS_Store
+Week14/medical_knowledge_graph/src/.DS_Store
+.DS_Store
+!Week14/medical_knowledge_graph/data/raw/umls/.gitkeep
+!Week14/medical_knowledge_graph/data/processed/.gitkeep
 
 # Python cache files
 **/__pycache__/
@@ -20,5 +37,38 @@ Week14/medical_knowledge_graph/data/processed/*
 *$py.class
 
 # Keep directory structure
-!Week14/medical_knowledge_graph/data/raw/umls/.gitkeep
-!Week14/medical_knowledge_graph/data/processed/.gitkeep
+Week15/medical_knowledge_graph/chroma_data/*
+Week15/.DS_Store
+Week15/medical_knowledge_graph/.DS_Store
+Week15/medical_knowledge_graph/data/.DS_Store
+Week15/medical_knowledge_graph/data/raw/.DS_Store
+Week15/medical_knowledge_graph/src/.DS_Store
+!Week15/medical_knowledge_graph/data/raw/umls/.gitkeep
+!Week15/medical_knowledge_graph/data/processed/.gitkeep
+Week15/medical_knowledge_graph/kg_evaluation_enhanced/
+Week15/medical_knowledge_graph/kg_evaluation_llama2_7b/
+Week15/medical_knowledge_graph/usmle_evaluation_results/
+Week15/medical_knowledge_graph/data/processed/
+Week15/medical_knowledge_graph/chroma_data/
+Week15/**/__pycache__/
+Week15/medical_knowledge_graph/data/raw/umls/*.RRF
+Week15/medical_knowledge_graph/data/raw/umls/MRCONSO.RRF
+Week15/medical_knowledge_graph/data/raw/umls/MRDEF.RRF
+Week15/medical_knowledge_graph/data/raw/umls/MRREL.RRF
+Week15/medical_knowledge_graph/data/raw/umls/MRSTY.RRF
+Week15/medical_knowledge_graph/data/raw/umls/MRHIER.RRF
+Week15/medical_knowledge_graph/data/raw/umls/MRSAT.RRF
+# Distribution / packaging
+dist/
+build/
+*.egg-info/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# MedQA dataset
+Week14/medical_knowledge_graph/data/raw/processed/medqa/
+Week15/medical_knowledge_graph/data/raw/processed/medqa/
+

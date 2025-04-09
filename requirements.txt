@@ -3,9 +3,13 @@ langchain-core>=0.1.13
 langchain-community
 langchain-openai>=0.0.3
 langchain>=0.1.0
+langchain-neo4j
 
 python-dotenv
 streamlit
+
+# Database
+neo4j>=5.14.0
 
 # Vector stores and databases
 chromadb==0.4.22
@@ -26,4 +30,3 @@ uvicorn
 wikipedia
 arxiv
 langchainhub
-neo4j
