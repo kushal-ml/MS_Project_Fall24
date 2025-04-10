@@ -12,6 +12,9 @@ import numpy as np
 from PIL import Image
 import base64
 from io import BytesIO
+from pyvis.network import Network
+import networkx as nx
+import tempfile
 
 # Import the USMLE processor from your existing file
 sys.path.append(str(Path(__file__).parent))
@@ -144,30 +147,165 @@ def plot_evidence_vs_correctness(evaluation):
         logger.error(f"Error creating evidence vs correctness plot: {str(e)}")
         return None
 
+def create_graph_visualization(concepts, relationships, multihop_paths=None):
+    """Create an interactive graph visualization using Pyvis"""
+    # Initialize a new network
+    net = Network(height="600px", width="100%", bgcolor="#ffffff", font_color="black")
+    net.force_atlas_2based()
+    
+    # Track added nodes to avoid duplicates
+    added_nodes = set()
+    
+    # First, collect all nodes that need to be added
+    nodes_to_add = {}
+    
+    # Add nodes from concepts
+    for concept in concepts:
+        cui = concept.get('cui')
+        if cui:
+            nodes_to_add[cui] = {
+                'label': concept.get('term', 'Unknown'),
+                'title': f"Definition: {concept.get('definition', 'No definition')}",
+                'color': '#97c2fc',  # Light blue for concept nodes
+                'size': 20
+            }
+    
+    # Add nodes from relationships
+    for rel in relationships:
+        source_cui = rel.get('source_cui')
+        target_cui = rel.get('target_cui')
+        if source_cui:
+            if source_cui not in nodes_to_add:
+                nodes_to_add[source_cui] = {
+                    'label': rel.get('source_name', 'Unknown'),
+                    'color': '#ffa500',  # Orange for relationship-only nodes
+                    'size': 20
+                }
+        if target_cui:
+            if target_cui not in nodes_to_add:
+                nodes_to_add[target_cui] = {
+                    'label': rel.get('target_name', 'Unknown'),
+                    'color': '#ffa500',
+                    'size': 20
+                }
+    
+    # Add nodes from multihop paths
+    if multihop_paths:
+        for path in multihop_paths:
+            if isinstance(path, dict) and 'path_nodes' in path:
+                nodes = path.get('path_nodes', [])
+                for node in nodes:
+                    cui = node.get('cui')
+                    if cui and cui not in nodes_to_add:
+                        nodes_to_add[cui] = {
+                            'label': node.get('term', 'Unknown'),
+                            'color': '#ffa500',
+                            'size': 20
+                        }
+    
+    # Add all nodes to the network
+    for cui, node_data in nodes_to_add.items():
+        net.add_node(cui, **node_data)
+        added_nodes.add(cui)
+    
+    # Add edges from relationships
+    for rel in relationships:
+        source_cui = rel.get('source_cui')
+        target_cui = rel.get('target_cui')
+        if source_cui and target_cui and source_cui in added_nodes and target_cui in added_nodes:
+            net.add_edge(source_cui, target_cui,
+                        title=rel.get('relationship_type', 'related_to'),
+                        label=rel.get('relationship_type', 'related_to'))
+    
+    # Add multihop path edges
+    if multihop_paths:
+        for path in multihop_paths:
+            if isinstance(path, dict) and 'path_nodes' in path:
+                nodes = path.get('path_nodes', [])
+                for i in range(len(nodes)-1):
+                    source = nodes[i].get('cui')
+                    target = nodes[i+1].get('cui')
+                    if source and target and source in added_nodes and target in added_nodes:
+                        # Add special highlighting for multihop path edges
+                        net.add_edge(source, target, color='#ff0000', width=2)
+    
+    # Enhanced physics options for better visualization
+    net.set_options("""
+    const options = {
+        "nodes": {
+            "font": {
+                "size": 12,
+                "face": "arial"
+            },
+            "borderWidth": 2,
+            "borderWidthSelected": 4,
+            "size": 30
+        },
+        "edges": {
+            "font": {
+                "size": 10,
+                "face": "arial"
+            },
+            "width": 1.5,
+            "smooth": {
+                "type": "continuous",
+                "forceDirection": "none"
+            },
+            "arrows": {
+                "to": {
+                    "enabled": true,
+                    "scaleFactor": 0.5
+                }
+            }
+        },
+        "physics": {
+            "forceAtlas2Based": {
+                "gravitationalConstant": -50,
+                "centralGravity": 0.01,
+                "springLength": 100,
+                "springConstant": 0.08,
+                "damping": 0.4
+            },
+            "maxVelocity": 50,
+            "solver": "forceAtlas2Based",
+            "timestep": 0.35,
+            "stabilization": {
+                "enabled": true,
+                "iterations": 150,
+                "updateInterval": 25
+            }
+        },
+        "interaction": {
+            "hover": true,
+            "navigationButtons": true,
+            "keyboard": {
+                "enabled": true
+            },
+            "multiselect": true,
+            "dragNodes": true,
+            "dragView": true,
+            "zoomView": true
+        },
+        "layout": {
+            "improvedLayout": true,
+            "hierarchical": {
+                "enabled": false
+            }
+        }
+    }
+    """)
+    
+    try:
+        # Create a temporary file to save the HTML
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.html', mode='w', encoding='utf-8') as tmp_file:
+            net.save_graph(tmp_file.name)
+            return tmp_file.name
+    except Exception as e:
+        logger.error(f"Error creating graph visualization: {str(e)}")
+        return None
+
 def main():
     st.set_page_config(page_title="USMLE Medical Question Processor", layout="wide")
-    
-    # Set theme to light
-    st.markdown("""
-        <style>
-            .stApp {
-                background-color: #ffffff;
-            }
-            .stTextInput > div > div > input {
-                background-color: #ffffff;
-            }
-            .stTextArea > div > div > textarea {
-                background-color: #ffffff;
-            }
-            .stSelectbox > div > div > div {
-                background-color: #ffffff;
-            }
-            .stButton > button {
-                background-color: #ffffff;
-                color: #000000;
-            }
-        </style>
-    """, unsafe_allow_html=True)
     
     # Set up the sidebar
     st.sidebar.title("USMLE Medical Question Processor")
@@ -235,7 +373,8 @@ def main():
             tabs = st.tabs([
                 "🔍 Answers", 
                 "📚 Knowledge Graph", 
-                "📖 Textbook Passages"
+                "📖 Textbook Passages",
+                "🕸️ Graph Visualization"
             ])
             
             # Tab 1: Answers
@@ -392,6 +531,56 @@ def main():
                         st.markdown("---")
                 else:
                     st.write("No textbook passages retrieved.")
+
+            # Tab 4: Graph Visualization
+            with tabs[3]:
+                st.markdown("## Knowledge Graph Visualization")
+                
+                if 'result' in st.session_state:
+                    concepts = st.session_state.result['kg_results']['concepts']
+                    relationships = st.session_state.result['kg_results']['relationships']
+                    multihop_paths = st.session_state.result['kg_results'].get('multihop_paths', [])
+                    
+                    if concepts and relationships:
+                        st.markdown("### Interactive Graph")
+                        st.markdown("""
+                        This visualization shows the relationships between medical concepts:
+                        - Blue nodes: Medical concepts
+                        - Orange nodes: Related entities
+                        - Red edges: Multihop paths
+                        - Hover over nodes to see definitions
+                        - Drag nodes to rearrange the graph
+                        - Zoom in/out using mouse wheel
+                        - Click and drag the background to pan
+                        """)
+                        
+                        # Create the visualization
+                        html_file = create_graph_visualization(concepts, relationships, multihop_paths)
+                        
+                        # Display the graph using HTML component
+                        with open(html_file, 'r', encoding='utf-8') as f:
+                            html_content = f.read()
+                        components.html(html_content, height=600)
+                        
+                        # Cleanup the temporary file
+                        os.unlink(html_file)
+                        
+                        # Add legend
+                        st.markdown("""
+                        #### Legend
+                        - 🔵 Blue nodes: Core medical concepts
+                        - 🟠 Orange nodes: Related entities
+                        - ⚡ Red edges: Multihop paths
+                        - ➡️ Black edges: Direct relationships
+                        """)
+                        
+                        # Add statistics
+                        st.markdown("### Graph Statistics")
+                        st.write(f"- Total nodes: {len(set(c['cui'] for c in concepts))}")
+                        st.write(f"- Total relationships: {len(relationships)}")
+                        st.write(f"- Multihop paths: {len(multihop_paths)}")
+                    else:
+                        st.warning("No graph data available. Please process a question first.")
 
 if __name__ == "__main__":
     main()
