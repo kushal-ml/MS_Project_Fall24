@@ -1004,36 +1004,32 @@ Format your answer EXACTLY as follows:
 
 REQUIRED ANSWER FORMAT:
 
-**1. EVIDENCE INVENTORY:**
-- Available Knowledge Graph Concepts: [List ALL provided CUI codes and their terms]
-- Available Knowledge Graph Relationships: [List ALL provided relationships]
-- Available Textbook Evidence: [List ALL relevant textbook passages with citation numbers]
 
-**2. EVIDENCE ANALYSIS:**
+**1. EVIDENCE ANALYSIS:**
 - Directly Relevant Evidence: [List evidence that directly addresses the question]
 - Indirectly Relevant Evidence: [List evidence that provides context or supporting information]
 - Missing Critical Evidence: [List any critical information that is not provided]
 
-**3. REASONING PROCESS:**
+**2. REASONING PROCESS:**
 For each step in your reasoning:
 a) State the claim/inference
 b) Cite the SPECIFIC evidence supporting it:
    - For KG concepts: "As evidenced by concept [CUI: C######]"
-   - For relationships: "As shown by relationship [C###### → RELATIONSHIP → C######]"
+   - For relationships/multihop paths: "As shown by relationship [C###### → RELATIONSHIP → C######]"
    - For textbook evidence: "As stated in [REF#]: 'exact quote'"
 c) If evidence is insufficient, explicitly state: "Insufficient evidence to support this claim"
 
-**4. DIFFERENTIAL ANALYSIS:**
+**3. DIFFERENTIAL ANALYSIS:**
 For each option:
 a) List supporting evidence with exact citations
 b) List contradicting evidence with exact citations
 c) State if there is insufficient evidence to evaluate the option
 
-**5. ANSWER CHOICE:**
+**4. ANSWER CHOICE:**
 - If evidence is sufficient: [Single option letter, e.g., "C"]
 - If evidence is insufficient: "Insufficient evidence to determine answer"
 
-**6. EVIDENCE ASSESSMENT:**
+**5. EVIDENCE ASSESSMENT:**
 - Evidence Completeness: [Assess what evidence is available vs. missing]
 - Evidence Quality: [Assess strength and relevance of available evidence]
 - Confidence Level: [State confidence based ONLY on evidence completeness]
@@ -1106,32 +1102,29 @@ c) When using your medical knowledge:
 
 Format your answer EXACTLY as follows:
 
-**1. EVIDENCE INVENTORY:**
-- Available Knowledge Graph Concepts: [List ONLY concepts with CUI codes from evidence]
-- Available Knowledge Graph Relationships: [List ONLY relationships from evidence]
-- Available Textbook Evidence: [List relevant passages with citation numbers]
 
-**2. REASONING PROCESS:**
+
+**1. REASONING PROCESS:**
 - Initial Assessment: [Combine evidence and medical knowledge]
 - Evidence-Based Findings: [Cite specific evidence]
 - Expert Interpretation: [Clearly marked as medical expertise]
 
-**3. CLINICAL CONTEXT:**
+**2. CLINICAL CONTEXT:**
 - Evidence-Based Pathophysiology: [Cite evidence]
 - Expert Clinical Insights: [Mark as medical expertise]
 - Integrated Understanding: [Show how evidence and expertise combine]
 
-**4. DIFFERENTIAL ANALYSIS:**
+**3. DIFFERENTIAL ANALYSIS:**
 For each option:
 - Supporting Evidence: [Cite specific evidence]
 - Expert Medical Knowledge: [Mark as medical expertise]
 - Combined Assessment: [Integrate both sources]
 
-**5. ANSWER CHOICE:**
+**4. ANSWER CHOICE:**
 - [Single option letter only, e.g. "C"]
 - Justify with both evidence and expertise
 
-**6. CONFIDENCE AND LIMITATIONS:**
+**5. CONFIDENCE AND LIMITATIONS:**
 - Evidence Strength: [Assess available evidence]
 - Knowledge Contribution: [How medical expertise filled gaps]
 - Combined Confidence: [Overall assessment]

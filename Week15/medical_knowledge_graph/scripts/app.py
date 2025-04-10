@@ -7,9 +7,6 @@ import time
 import logging
 import matplotlib.pyplot as plt
 import pandas as pd
-import networkx as nx
-from pyvis.network import Network
-import tempfile
 import streamlit.components.v1 as components
 import numpy as np
 from PIL import Image
@@ -31,82 +28,6 @@ logger = logging.getLogger(__name__)
 @st.cache_resource
 def get_processor():
     return USMLEProcessor()
-
-def extract_entities_for_visualization(knowledge_graph_data):
-    """Extract nodes and edges from knowledge graph data for visualization"""
-    nodes = set()
-    edges = []
-    
-    # Extract from formatted data
-    lines = knowledge_graph_data.split('\n')
-    
-    # Process concepts
-    in_concepts_section = False
-    in_relationships_section = False
-    
-    for line in lines:
-        if "## Medical Concepts" in line:
-            in_concepts_section = True
-            in_relationships_section = False
-            continue
-        elif "## Relationships" in line:
-            in_concepts_section = False
-            in_relationships_section = True
-            continue
-        elif "## Complex Knowledge Paths" in line:
-            in_concepts_section = False
-            in_relationships_section = False
-            continue
-            
-        if in_concepts_section and line.startswith("Concept:"):
-            # Extract concept ID and name
-            parts = line.split(" - ", 1)
-            if len(parts) > 1:
-                concept_id = parts[0].replace("Concept:", "").strip()
-                concept_name = parts[1].strip()
-                nodes.add((concept_id, concept_name))
-                
-        elif in_relationships_section and line.startswith("Relationship:"):
-            # Extract relationship
-            rel_text = line.replace("Relationship:", "").strip()
-            rel_parts = rel_text.split(" → ")
-            if len(rel_parts) == 3:
-                source = rel_parts[0].strip()
-                relation = rel_parts[1].strip()
-                target = rel_parts[2].strip()
-                
-                # Add nodes and edge
-                nodes.add((f"node_{len(nodes)}", source))
-                nodes.add((f"node_{len(nodes)}", target))
-                edges.append((source, target, relation))
-    
-    return list(nodes), edges
-
-def visualize_knowledge_graph(nodes, edges):
-    """Create an interactive network visualization of the knowledge graph"""
-    G = nx.DiGraph()
-    
-    # Add nodes
-    for node_id, node_name in nodes:
-        G.add_node(node_name, title=node_name, group=1)
-    
-    # Add edges
-    for source, target, relation in edges:
-        G.add_edge(source, target, title=relation, label=relation)
-    
-    # Create PyVis network with minimal options
-    net = Network(notebook=True, width="100%", height="600px", directed=True)
-    
-    # Convert networkx graph to PyVis
-    net.from_nx(G)
-    
-    # Enable arrow heads on edges
-    net.barnes_hut()
-    
-    # Generate HTML file
-    with tempfile.NamedTemporaryFile(delete=False, suffix='.html') as f:
-        net.save_graph(f.name)
-        return f.name
 
 def format_metrics_table(evaluation):
     """Format evaluation metrics as a markdown table"""
@@ -226,6 +147,28 @@ def plot_evidence_vs_correctness(evaluation):
 def main():
     st.set_page_config(page_title="USMLE Medical Question Processor", layout="wide")
     
+    # Set theme to light
+    st.markdown("""
+        <style>
+            .stApp {
+                background-color: #ffffff;
+            }
+            .stTextInput > div > div > input {
+                background-color: #ffffff;
+            }
+            .stTextArea > div > div > textarea {
+                background-color: #ffffff;
+            }
+            .stSelectbox > div > div > div {
+                background-color: #ffffff;
+            }
+            .stButton > button {
+                background-color: #ffffff;
+                color: #000000;
+            }
+        </style>
+    """, unsafe_allow_html=True)
+    
     # Set up the sidebar
     st.sidebar.title("USMLE Medical Question Processor")
     st.sidebar.markdown("This app processes medical questions using a knowledge graph, vector database, and LLM.")
@@ -292,8 +235,7 @@ def main():
             tabs = st.tabs([
                 "🔍 Answers", 
                 "📚 Knowledge Graph", 
-                "📖 Textbook Passages", 
-                "🕸️ Graph Visualization"
+                "📖 Textbook Passages"
             ])
             
             # Tab 1: Answers
@@ -369,6 +311,61 @@ def main():
                     st.write(f"Showing top 20 of {len(relationships)} relationships")
                 else:
                     st.write("No relationships retrieved.")
+                
+                # New Section: Multihop Paths
+                st.markdown("### Multihop Paths")
+                multihop_paths = result['kg_results'].get('multihop_paths', [])
+                if multihop_paths:
+                    # Create a DataFrame to display the paths in a tabular format
+                    path_data = []
+                    for i, path in enumerate(multihop_paths):
+                        # Check if path is a dictionary with structured data
+                        if isinstance(path, dict):
+                            path_data.append({
+                                "Path #": i+1,
+                                "Source": path.get('source_term', 'Unknown'),
+                                "Target": path.get('target_term', 'Unknown'),
+                                "Length": path.get('path_length', 'N/A'),
+                                "Description": path.get('path_description', 'N/A'),
+                                "Relevance": f"{path.get('relevance_score', 0):.3f}"
+                            })
+                        # If it's just a list of nodes
+                        elif isinstance(path, list):
+                            path_data.append({
+                                "Path #": i+1,
+                                "Path": " → ".join(path)
+                            })
+                    
+                    if path_data:
+                        # Display as a DataFrame
+                        st.dataframe(pd.DataFrame(path_data))
+                        st.write(f"Showing {len(path_data)} multihop paths")
+                        
+                        # Optionally add a more detailed view for a few top paths
+                        st.markdown("#### Top Path Details")
+                        for i, path in enumerate(multihop_paths[:3]):  # Show top 3 paths
+                            if isinstance(path, dict):
+                                st.markdown(f"**Path {i+1}:** {path.get('source_term', '')} → {path.get('target_term', '')}")
+                                st.markdown(f"**Description:** {path.get('path_description', 'N/A')}")
+                                
+                                # If path_nodes and path_rels are available, display the full path
+                                if 'path_nodes' in path and 'path_rels' in path:
+                                    nodes = path.get('path_nodes', [])
+                                    rels = path.get('path_rels', [])
+                                    
+                                    if nodes and len(nodes) > 1:
+                                        full_path = []
+                                        for j in range(len(nodes)-1):
+                                            full_path.append(f"({nodes[j]})-[{rels[j]}]->")
+                                        full_path.append(f"({nodes[-1]})")
+                                        st.markdown(f"**Full Path:** {''.join(full_path)}")
+                                
+                                st.markdown(f"**Relevance Score:** {path.get('relevance_score', 0):.3f}")
+                                st.markdown("---")
+                    else:
+                        st.write("No structured path data available.")
+                else:
+                    st.write("No multihop paths found.")
             
             # Tab 3: Textbook Passages
             with tabs[2]:
@@ -395,41 +392,6 @@ def main():
                         st.markdown("---")
                 else:
                     st.write("No textbook passages retrieved.")
-            
-            # Tab 4: Graph Visualization
-            with tabs[3]:
-                st.markdown("## Knowledge Graph Visualization")
-                
-                # Extract nodes and edges from the knowledge graph data
-                formatted_kg_data = result['kg_results']['formatted_data']
-                nodes, edges = extract_entities_for_visualization(formatted_kg_data)
-                
-                if nodes and edges:
-                    st.markdown(f"### Interactive Graph ({len(nodes)} nodes, {len(edges)} edges)")
-                    
-                    # Save and display the graph
-                    graph_html = visualize_knowledge_graph(nodes, edges)
-                    
-                    # Display the graph in the Streamlit app
-                    with open(graph_html, 'r', encoding='utf-8') as f:
-                        html = f.read()
-                    components.html(html, height=600)
-                    
-                    # Provide download link for the graph
-                    with open(graph_html, 'r', encoding='utf-8') as f:
-                        html_data = f.read()
-                        b64 = base64.b64encode(html_data.encode()).decode()
-                    
-                    href = f'<a href="data:text/html;base64,{b64}" download="knowledge_graph.html">Download Interactive Graph</a>'
-                    st.markdown(href, unsafe_allow_html=True)
-                    
-                    # Clean up temporary file
-                    try:
-                        os.unlink(graph_html)
-                    except:
-                        pass
-                else:
-                    st.write("Not enough data to create a meaningful graph visualization.")
 
 if __name__ == "__main__":
     main()

@@ -450,11 +450,16 @@ class KnowledgeGraphEvaluator:
             
             logger.info(f"DEBUG: Added {med_concepts_added} medication concepts")
         
-        # IMPROVEMENT 3: Vector search with lower threshold
+        # IMPROVEMENT 3: Vector search with lower threshold AND LIMITED RESULTS
         # Lower the threshold from default 0.3 to 0.2
         vector_search_threshold = self.settings.get("vector_search_threshold", 0.3)
         improved_threshold = max(0.2, vector_search_threshold * 0.8)  # Lower by 20% but not below 0.2
         logger.info(f"DEBUG: Vector search threshold: {improved_threshold} (original: {vector_search_threshold})")
+        
+        # NEW: Set limits for vector matching
+        max_vector_matches_per_term = 3  # Max 3 matches per term
+        max_total_vector_matches = 10    # Max 10 matches total across all terms
+        total_vector_matches_added = 0
         
         # Get concept terms from the graph for vector matching
         if self.settings.get("vector_searchEnabled", True):
@@ -501,6 +506,15 @@ class KnowledgeGraphEvaluator:
                     if is_duplicate:
                         continue
                     
+                    # NEW: Check limits for vector matching
+                    if concepts_added_for_term >= max_vector_matches_per_term:
+                        logger.info(f"DEBUG: Reached max vector matches per term ({max_vector_matches_per_term}) for '{term_text}'")
+                        break
+                    
+                    if total_vector_matches_added >= max_total_vector_matches:
+                        logger.info(f"DEBUG: Reached max total vector matches ({max_total_vector_matches})")
+                        break
+                    
                     # Add to concepts list
                     concepts.append({
                         "cui": concept.get("cui"),
@@ -514,8 +528,14 @@ class KnowledgeGraphEvaluator:
                     })
                     concepts_added_for_term += 1
                     vector_concepts_added += 1
+                    total_vector_matches_added += 1
                 
                 logger.info(f"DEBUG: Added {concepts_added_for_term} vector-matched concepts for term '{term_text}'")
+                
+                # NEW: Check if we've reached the total limit
+                if total_vector_matches_added >= max_total_vector_matches:
+                    logger.info(f"DEBUG: Stopping vector matching after reaching max total ({max_total_vector_matches})")
+                    break
             
             logger.info(f"DEBUG: Added {vector_concepts_added} total vector-matched concepts")
         
@@ -580,7 +600,7 @@ class KnowledgeGraphEvaluator:
             return []
 
     def find_multihop_paths(self, concepts: List[Dict], max_depth: int = None) -> List[Dict]:
-        """Find multi-hop paths with all relationship types"""
+        """Find multi-hop paths, excluding HAS_SEMANTIC_TYPE relationships and self-loops"""
         if not self.settings["multihop_enabled"]:
             return []
         
@@ -596,8 +616,13 @@ class KnowledgeGraphEvaluator:
             if len(cuis) < 2:
                 return []
             
-            # Use top 8 concepts instead of just 5
-            top_cuis = cuis[:min(8, len(cuis))]
+            # Prioritize directly matched concepts (not from vector search)
+            direct_match_concepts = [c for c in concepts if c.get('vector_match') != True]
+            vector_match_concepts = [c for c in concepts if c.get('vector_match') == True]
+            
+            # Combine prioritizing direct matches
+            prioritized_concepts = direct_match_concepts + vector_match_concepts
+            top_cuis = [c.get('cui') for c in prioritized_concepts[:8] if c and c.get('cui')]
             
             paths = []
             for i, source_cui in enumerate(top_cuis):
@@ -605,12 +630,22 @@ class KnowledgeGraphEvaluator:
                     if source_cui == target_cui:
                         continue
                     
-                    # Modified query to use all relationship types without filtering
+                    # Modified query to completely exclude HAS_SEMANTIC_TYPE relationships
                     query = f"""
-                    MATCH path = (start:Concept {{cui: $source_cui}})-[*1..{max_depth}]-(end:Concept {{cui: $target_cui}})
-                    WITH path, start, end, relationships(path) as rels, nodes(path) as nodes
+                    MATCH path = (start:Concept {{cui: $source_cui}})-[rels*1..{max_depth}]-(end:Concept {{cui: $target_cui}})
+                    WHERE 
+                        // Exclude any path that contains a HAS_SEMANTIC_TYPE relationship
+                        NOT ANY(r IN rels WHERE type(r) = 'HAS_SEMANTIC_TYPE')
+                        
+                        // Filter out SAME_AS that are self-loops (connecting same CUI)
+                        AND NOT ANY(i IN range(0, size(rels)-1) 
+                            WHERE type(rels[i]) = 'SAME_AS' 
+                            AND nodes(path)[i].cui = nodes(path)[i+1].cui)
+                    
+                    WITH path, start, end, rels, nodes(path) as nodes
                     ORDER BY length(path) 
                     LIMIT 3
+                    
                     RETURN 
                         start.cui as source_cui,
                         start.term as source_term,
@@ -630,12 +665,16 @@ class KnowledgeGraphEvaluator:
                     valid_results = [r for r in results if r and 'source_cui' in r and 'target_cui' in r]
                     paths.extend(valid_results)
             
-            # Format the best 30 paths
+            # Format the paths
             formatted_paths = []
             for path in sorted(paths, key=lambda x: x.get('path_length', 99))[:30]:
                 try:
                     nodes = path.get('path_nodes', [])
                     rels = path.get('path_rels', [])
+                    
+                    # Extra check to ensure no HAS_SEMANTIC_TYPE relationships
+                    if any(rel['type'] == 'HAS_SEMANTIC_TYPE' for rel in rels):
+                        continue
                     
                     path_description = []
                     path_description.append(f"({nodes[0]['term']})")
